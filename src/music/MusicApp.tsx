@@ -68,7 +68,7 @@ export default function MusicApp() {
         <nav className="nav">
           <button className={tab === 'home' ? 'active' : ''} onClick={() => setTab('home')}><Icon name="home" size={16} /> 主页</button>
           <button className={tab === 'player' ? 'active' : ''} onClick={() => setTab('player')}><Icon name="music" size={16} /> 播放</button>
-          <button className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}><Icon name="settings" size={16} /> 设置</button>
+          <button className={tab === 'settings' ? 'active' : ''} onClick={() => setShowSettings(true)}><Icon name="settings" size={16} /> 设置</button>
         </nav>
         <div className="sidebar-foot">
           <button className="side-btn" onClick={() => setShowDebug(true)}><Icon name="bug" size={16} /> 调试</button>
@@ -78,14 +78,21 @@ export default function MusicApp() {
 
       <main className="main">
         {tab === 'home' && (
-          <Discover sources={store.sources} library={library} playback={playback} onSearch={goSearch} />
+          <Discover
+            sources={store.sources}
+            library={library}
+            playback={playback}
+            onSearch={goSearch}
+            onOpenSources={() => setShowSources(true)}
+            onOpenHistory={() => { setSearchQuery(undefined); setSearchOpen(true); }}
+          />
         )}
       </main>
 
       <nav className="bottom-nav">
         <button className={tab === 'home' ? 'active' : ''} onClick={() => setTab('home')}><span className="ico"><Icon name="home" /></span><span>主页</span></button>
         <button className={tab === 'player' ? 'active' : ''} onClick={() => setTab('player')}><span className="ico"><Icon name="music" /></span><span>播放</span></button>
-        <button className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}><span className="ico"><Icon name="settings" /></span><span>设置</span></button>
+        <button className={tab === 'settings' ? 'active' : ''} onClick={() => setShowSettings(true)}><span className="ico"><Icon name="settings" /></span><span>设置</span></button>
       </nav>
 
       {tab === 'player' && state.current && (
@@ -94,8 +101,13 @@ export default function MusicApp() {
       {tab === 'player' && !state.current && (
         <div className="fs-player fs-empty">
           <div className="fs-empty-inner">
-            <Icon name="music" size={48} />
-            <p>暂无播放</p>
+            <div className="fs-cover empty"><Icon name="music" size={56} /></div>
+            <h3 className="fs-title">未在播放</h3>
+            <div className="fs-ctrls">
+              <button className="fs-btn" disabled><Icon name="skip-back" size={22} /></button>
+              <button className="fs-btn play" disabled><Icon name="play" size={26} /></button>
+              <button className="fs-btn" disabled><Icon name="skip-forward" size={22} /></button>
+            </div>
             <button className="primary" onClick={() => setTab('home')}>去主页听听</button>
           </div>
         </div>
