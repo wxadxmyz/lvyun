@@ -13,11 +13,15 @@ export function Discover({
   library,
   playback,
   onSearch,
+  onOpenSources,
+  onOpenHistory,
 }: {
   sources: SourceConfig[];
   library: ReturnType<typeof useLibrary>;
   playback: ReturnType<typeof usePlayback>;
   onSearch: (q: string) => void;
+  onOpenSources: () => void;
+  onOpenHistory: () => void;
 }) {
   const [all, setAll] = useState<MediaItem[]>([]);
   const [q, setQ] = useState('');
@@ -55,24 +59,27 @@ export function Discover({
     </section>
   );
 
+  const homeTop = (
+    <div className="home-top">
+      <div className="ht-logo">音<span className="dot">流</span></div>
+      <div className="ht-actions">
+        <button className="ht-ico" onClick={() => onSearch('')} title="搜索"><Icon name="search" size={20} /></button>
+        <button className="ht-ico" onClick={onOpenHistory} title="历史"><Icon name="clock" size={20} /></button>
+      </div>
+    </div>
+  );
+
   if (sources.length === 0) {
     return (
       <div className="view discover">
-        <div className="search-bar big">
-          <span className="search-ico"><Icon name="search" size={18} /></span>
-          <input
-            value={q}
-            placeholder="搜索歌曲 / 歌手 / 专辑…"
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && q.trim()) onSearch(q.trim()); }}
-          />
-          <button className="primary" onClick={() => q.trim() && onSearch(q.trim())}>搜索</button>
-        </div>
+        {homeTop}
         <div className="blank-state">
           <div className="blank-art"><Icon name="music" size={44} /></div>
-          <h2>还没有接入音源</h2>
+          <h2>导入音源，发现好音乐</h2>
           <p className="muted">在「设置 → 音源管理」里导入一个 JSON 音源，<br />推荐歌单与搜索就会在这里出现。</p>
-          <button className="primary" onClick={() => onSearch('')}>去设置添加音源</button>
+          <button className="import-fab" onClick={onOpenSources}>
+            <Icon name="plus" size={18} /> 导入音源
+          </button>
         </div>
       </div>
     );
@@ -80,6 +87,7 @@ export function Discover({
 
   return (
     <div className="view discover">
+      {homeTop}
       <div className="search-bar big">
         <span className="search-ico"><Icon name="search" size={18} /></span>
         <input
