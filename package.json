@@ -1,7 +1,7 @@
 {
   "name": "meloflow",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "description": "音流 MeloFlow - 支持自定义 API 音源的音乐播放器（Tauri 桌面端）",
   "scripts": {

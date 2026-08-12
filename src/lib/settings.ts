@@ -14,6 +14,15 @@ export interface AppSettings {
   playbackRate: number; // 倍速记忆（0.5~2.0）
   skipByItem: Record<string, { intro: number; outro: number }>; // 按影视记忆的跳过片头/片尾（秒）
   subtitleStyle: { size: number; color: string; position: 'bottom' | 'top'; outline: boolean; bg: boolean }; // 字幕样式（影视）
+  // v1.2.1 新增
+  disclaimerAccepted: boolean; // 是否已同意免责声明（首次启动）
+  darkMode: boolean; // 深色模式
+  themeColor?: string; // 主题强调色
+  wallpaper?: string; // 首页壁纸地址
+  shuffle: boolean; // 随机播放
+  swipeGesture: boolean; // 上下滑切歌手势
+  sleepTimer: number; // 睡眠定时（分钟，0=关闭）
+  blurCover: boolean; // 封面模糊背景
 }
 
 const KEY = 'mps_settings';
@@ -32,6 +41,14 @@ const DEFAULTS: AppSettings = {
   playbackRate: 1,
   skipByItem: {},
   subtitleStyle: { size: 24, color: '#ffffff', position: 'bottom', outline: true, bg: false },
+  disclaimerAccepted: false,
+  darkMode: true,
+  themeColor: undefined,
+  wallpaper: undefined,
+  shuffle: false,
+  swipeGesture: true,
+  sleepTimer: 0,
+  blurCover: true,
 };
 
 export function useSettings() {
