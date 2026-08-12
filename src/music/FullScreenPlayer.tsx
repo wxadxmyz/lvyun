@@ -44,6 +44,8 @@ export function FullScreenPlayer({
   const [eqGains, setEqGainsLocal] = useState<number[]>(getEqGains());
   const [eqPreset, setEqPreset] = useState('关闭');
   const [sleepMode, setSleepMode] = useState<SleepMode>('off');
+  const [lyricsOpen, setLyricsOpen] = useState(false);
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
   const sleepTimer = useRef<number | undefined>(undefined);
@@ -142,7 +144,21 @@ export function FullScreenPlayer({
   };
 
   return (
-    <div className="fs-player">
+    <div
+      className="fs-player"
+      onTouchStart={(e) => { swipeStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+      onTouchEnd={(e) => {
+        if (!swipeStart.current) return;
+        const dy = e.changedTouches[0].clientY - swipeStart.current.y;
+        const dx = e.changedTouches[0].clientX - swipeStart.current.x;
+        swipeStart.current = null;
+        // 上下滑切歌（仅在纵向位移明显时）
+        if (Math.abs(dy) > 50 && Math.abs(dy) > Math.abs(dx)) {
+          if (dy < 0) player.next();
+          else player.prev();
+        }
+      }}
+    >
       <div
         className="fs-bg"
         style={{ backgroundImage: it.cover ? `url(${it.cover})` : gradientFor(it.title) }}
@@ -154,12 +170,13 @@ export function FullScreenPlayer({
       </div>
 
       <div className="fs-body">
-        <div className="fs-disc-wrap">
+        <div className="fs-disc-wrap" onClick={() => setLyricsOpen((v) => !v)} style={{ cursor: 'pointer' }}>
           <div className={'fs-disc' + (state.isPlaying ? ' spinning' : '')}>
             {it.cover ? <img src={it.cover} alt="" /> : <span className="ph" style={{ background: gradientFor(it.title) }}>{initial(it.title)}</span>}
           </div>
           <div className="fs-needle" />
           <canvas ref={canvasRef} className="fs-spectrum" width={300} height={64} />
+          <span className="fs-tap-hint">点击看歌词</span>
         </div>
 
         <div className="fs-info">
@@ -278,6 +295,18 @@ export function FullScreenPlayer({
             ))}
             {state.queue.length === 0 && <div className="muted sm">当前为单曲播放，没有队列。</div>}
           </div>
+        </div>
+      )}
+
+      {lyricsOpen && (
+        <div className="fs-lyrics-full" onClick={() => setLyricsOpen(false)}>
+          {lyricLines.length ? (
+            lyricLines.map((l, i) => (
+              <p key={i} className={'lyric-line' + (i === aLine ? ' active' : '')}>{l.text || '·'}</p>
+            ))
+          ) : (
+            <p className="lyric-line muted">[ 暂无歌词 ] 接入真实音源后将逐行显示歌词。</p>
+          )}
         </div>
       )}
     </div>

@@ -20,8 +20,10 @@ export function Discover({
   onSearch: (q: string) => void;
 }) {
   const [all, setAll] = useState<MediaItem[]>([]);
+  const [q, setQ] = useState('');
 
   useEffect(() => {
+    if (sources.length === 0) return;
     aggregateSearch(sources, '').then((r) => setAll(r.items.filter((i) => i.mediaType === 'music')));
   }, [sources]);
 
@@ -53,14 +55,40 @@ export function Discover({
     </section>
   );
 
+  if (sources.length === 0) {
+    return (
+      <div className="view discover">
+        <div className="search-bar big">
+          <span className="search-ico"><Icon name="search" size={18} /></span>
+          <input
+            value={q}
+            placeholder="搜索歌曲 / 歌手 / 专辑…"
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && q.trim()) onSearch(q.trim()); }}
+          />
+          <button className="primary" onClick={() => q.trim() && onSearch(q.trim())}>搜索</button>
+        </div>
+        <div className="blank-state">
+          <div className="blank-art"><Icon name="music" size={44} /></div>
+          <h2>还没有接入音源</h2>
+          <p className="muted">在「设置 → 音源管理」里导入一个 JSON 音源，<br />推荐歌单与搜索就会在这里出现。</p>
+          <button className="primary" onClick={() => onSearch('')}>去设置添加音源</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="view discover">
-      <div className="hero">
-        <div className="hero-text">
-          <h1>发现好音乐</h1>
-          <p>跨源聚合 · 一次搜索，听遍所有你添加的 API 源</p>
-        </div>
-        <div className="hero-art" style={{ background: gradientFor('music') }}><Icon name="music" size={40} /></div>
+      <div className="search-bar big">
+        <span className="search-ico"><Icon name="search" size={18} /></span>
+        <input
+          value={q}
+          placeholder="搜索歌曲 / 歌手 / 专辑…"
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && q.trim()) onSearch(q.trim()); }}
+        />
+        <button className="primary" onClick={() => q.trim() && onSearch(q.trim())}>搜索</button>
       </div>
 
       <div className="chips">
