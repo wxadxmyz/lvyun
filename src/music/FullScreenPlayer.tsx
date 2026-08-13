@@ -36,7 +36,9 @@ export function FullScreenPlayer({
 }) {
   const state = usePlayer();
   const { settings, update } = useSettings();
-  const [showQueue, setShowQueue] = useState(false);
+  const [showPlaylist, setShowPlaylist] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [menuView, setMenuView] = useState<'main' | 'add' | 'speed' | 'timer' | 'artist'>('main');
   const [showEq, setShowEq] = useState(false);
   const [showSleep, setShowSleep] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -177,9 +179,9 @@ export function FullScreenPlayer({
         style={{ backgroundImage: it.cover ? `url(${it.cover})` : gradientFor(it.title) }}
       />
       <div className="fs-top">
-        <button className="icon" onClick={onClose} title="收起"><Icon name="chevron-down" /></button>
-        <span className="fs-now">正在播放 · {it.sourceName}</span>
-        <button className="icon" onClick={() => setShowQueue((v) => !v)} title="播放队列"><Icon name="list" /></button>
+        <button className="icon" onClick={() => setShowPlaylist(true)} title="播放列表"><Icon name="menu" /></button>
+        <span className="fs-now">正 在 播 放</span>
+        <button className="icon" onClick={() => { setMenuView('main'); setShowMenu(true); }} title="更多"><Icon name="more-vertical" /></button>
       </div>
 
       <div className="fs-body">
@@ -279,35 +281,43 @@ export function FullScreenPlayer({
         </div>
       )}
 
-      {showQueue && (
-        <div className="fs-queue">
-          <div className="fs-queue-head">
-            播放队列（{state.queue.length}）
-            <span className="muted sm">可拖拽排序</span>
-            {state.queue.length > 0 && <button className="link danger" onClick={() => player.clearQueue()}>清空</button>}
+      {showPlaylist && (
+        <div className="fs-playlist">
+          <div className="fs-pl-head">
+            <button className="icon" onClick={() => setShowPlaylist(false)} aria-label="返回"><Icon name="arrow-left" /></button>
+            <span className="pl-title">播放列表</span>
+            <button
+              className="pl-mode"
+              onClick={() => player.setMode(state.mode === 'list' ? 'one' : state.mode === 'one' ? 'shuffle' : 'list')}
+            >
+              <Icon name={MODE_ICON[state.mode].icon} size={15} /> {MODE_ICON[state.mode].label}
+            </button>
           </div>
-          <div className="fs-queue-list">
+          <div className="fs-pl-list">
             {state.queue.map((q, i) => (
               <div
                 key={i}
-                className={'fs-queue-item' + (i === state.index ? ' active' : '') + (dragIndex === i ? ' dragging' : '')}
+                className={'fs-pl-item' + (i === state.index ? ' active' : '') + (dragIndex === i ? ' dragging' : '')}
                 draggable
                 onDragStart={() => setDragIndex(i)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => drop(i)}
                 onClick={() => player.playAt(i)}
               >
-                <span className="qidx">{i === state.index ? <Icon name="play" size={14} /> : i + 1}</span>
-                <span className="qtitle">{q.title}</span>
-                <span className="qsub">{q.artist ?? ''}</span>
-                {i !== state.index && (
-                  <button className="mini" title="下一首播放" onClick={(e) => { e.stopPropagation(); player.enqueueAt(q, state.index + 1); }}><Icon name="skip-forward" size={14} /></button>
-                )}
-                <button className="mini" title="移除" onClick={(e) => { e.stopPropagation(); player.removeFromQueue(i); }}><Icon name="x" size={14} /></button>
+                <span className="pl-idx">{i === state.index ? <Icon name="play" size={13} /> : i + 1}</span>
+                <div className="pl-meta">
+                  <div className="pl-name">{q.title}</div>
+                  <div className="pl-sub">{[q.artist, q.album].filter(Boolean).join(' · ') || '未知艺术家'}</div>
+                </div>
+                <button className={'mini' + (library.isFavorite(q) ? ' fav' : '')} title="收藏" onClick={(e) => { e.stopPropagation(); library.toggleFavorite(q); }}>
+                  <Icon name={library.isFavorite(q) ? 'heart-filled' : 'heart'} size={15} />
+                </button>
+                <span className="pl-handle" title="拖拽排序"><Icon name="menu" size={16} /></span>
               </div>
             ))}
-            {state.queue.length === 0 && <div className="muted sm">当前为单曲播放，没有队列。</div>}
+            {state.queue.length === 0 && <div className="muted sm" style={{ padding: 24, textAlign: 'center' }}>当前为单曲播放，没有队列。</div>}
           </div>
+          <div className="fs-pl-foot">共 {state.queue.length} 首 · 可拖拽排序 · 点击播放</div>
         </div>
       )}
 
@@ -320,6 +330,121 @@ export function FullScreenPlayer({
           ) : (
             <p className="lyric-line muted">[ 暂无歌词 ] 接入真实音源后将逐行显示歌词。</p>
           )}
+        </div>
+      )}
+
+      {showMenu && (
+        <div className="fs-menu-mask" onClick={() => { setShowMenu(false); setMenuView('main'); }}>
+          <div className="fs-sheet" onClick={(e) => e.stopPropagation()}>
+            {menuView === 'main' && (
+              <>
+                <div className="fs-sheet-head">
+                  <span className="sh-title">更多</span>
+                  <button className="icon" onClick={() => { setShowMenu(false); setMenuView('main'); }} aria-label="关闭"><Icon name="x" /></button>
+                </div>
+                <button className="fs-sheet-row" onClick={() => setMenuView('add')}>
+                  <span className="sr-ico"><Icon name="plus" size={20} /></span>
+                  <span className="sr-text">添加到歌单</span>
+                  <Icon name="arrow-right" className="sr-arrow" />
+                </button>
+                <button className="fs-sheet-row" onClick={() => setMenuView('speed')}>
+                  <span className="sr-ico"><Icon name="sliders" size={20} /></span>
+                  <span className="sr-text">倍速播放<span className="sr-sub">{speed === 1 ? '原速' : speed + 'x'}</span></span>
+                  <Icon name="arrow-right" className="sr-arrow" />
+                </button>
+                <button className="fs-sheet-row" onClick={() => setMenuView('timer')}>
+                  <span className="sr-ico"><Icon name="clock" size={20} /></span>
+                  <span className="sr-text">定时关闭<span className="sr-sub">{sleepMode === 'off' ? '关闭' : sleepMode === 'end' ? '播完本曲' : sleepMode + ' 分'}</span></span>
+                  <Icon name="arrow-right" className="sr-arrow" />
+                </button>
+                <button className="fs-sheet-row" onClick={() => setMenuView('artist')}>
+                  <span className="sr-ico"><Icon name="music" size={20} /></span>
+                  <span className="sr-text">歌手详情<span className="sr-sub">{it.artist ?? '未知'}</span></span>
+                  <Icon name="arrow-right" className="sr-arrow" />
+                </button>
+                <button className="fs-sheet-row danger" onClick={() => { setShowMenu(false); onClose(); }}>
+                  <span className="sr-ico"><Icon name="chevron-down" size={20} /></span>
+                  <span className="sr-text">收起播放器</span>
+                </button>
+              </>
+            )}
+
+            {menuView === 'add' && (
+              <>
+                <div className="fs-sheet-head">
+                  <button className="icon" onClick={() => setMenuView('main')} aria-label="返回"><Icon name="arrow-left" /></button>
+                  <span className="sh-title">添加到歌单</span>
+                </div>
+                <div className="fs-plpick">
+                  <div className="fs-plpick-create" onClick={() => { const n = window.prompt('歌单名称'); if (n && n.trim()) library.createPlaylist(n.trim()); }}>
+                    <span className="pc-ico"><Icon name="plus" size={18} /></span>
+                    <span>创建新歌单</span>
+                  </div>
+                  {library.lib.playlists.map((p) => {
+                    const added = p.items.some((x) => x.sourceId === it.sourceId && x.id === it.id);
+                    return (
+                      <div key={p.id} className={'fs-plpick-item' + (added ? ' added' : '')} onClick={() => library.addToPlaylist(p.id, it)}>
+                        <span className="pi-cover" />
+                        <span className="pi-name">{p.name}</span>
+                        <span className="pi-count">{p.items.length} 首</span>
+                        <span className="pi-check"><Icon name="check" size={14} /></span>
+                      </div>
+                    );
+                  })}
+                  {library.lib.playlists.length === 0 && <div className="muted sm" style={{ padding: 12 }}>还没有歌单，点上方创建。</div>}
+                </div>
+              </>
+            )}
+
+            {menuView === 'speed' && (
+              <>
+                <div className="fs-sheet-head">
+                  <button className="icon" onClick={() => setMenuView('main')} aria-label="返回"><Icon name="arrow-left" /></button>
+                  <span className="sh-title">倍速播放</span>
+                </div>
+                <div className="fs-speed-val">{speed === 1 ? '原速' : speed + 'x'}</div>
+                <input className="fs-slider" type="range" min={0} max={SPEEDS.length - 1} step={1} value={SPEEDS.indexOf(speed)} onChange={(e) => setSpeed(SPEEDS[Number(e.target.value)])} />
+                <div className="fs-speed-ticks">{SPEEDS.map((s) => <span key={s}>{s === 1 ? '原速' : s + 'x'}</span>)}</div>
+                <div className="fs-pill-row">{SPEEDS.map((s) => <button key={s} className={'fs-pill' + (speed === s ? ' active' : '')} onClick={() => setSpeed(s)}>{s === 1 ? '原速' : s + 'x'}</button>)}</div>
+              </>
+            )}
+
+            {menuView === 'timer' && (
+              <>
+                <div className="fs-sheet-head">
+                  <button className="icon" onClick={() => setMenuView('main')} aria-label="返回"><Icon name="arrow-left" /></button>
+                  <span className="sh-title">定时关闭</span>
+                </div>
+                <div className="fs-pill-row">
+                  {([['off', '关闭'], ['15', '15 分'], ['30', '30 分'], ['60', '60 分'], ['end', '播完本曲']] as [SleepMode, string][]).map(([m, label]) => (
+                    <button key={m} className={'fs-pill' + (sleepMode === m ? ' active' : '')} onClick={() => applySleep(m)}>{label}</button>
+                  ))}
+                </div>
+                <label className="fs-radio-row" style={{ marginTop: 14 }}>
+                  <input type="checkbox" checked={sleepMode === 'end'} onChange={(e) => applySleep(e.target.checked ? 'end' : 'off')} />
+                  播完整首歌后停止
+                </label>
+              </>
+            )}
+
+            {menuView === 'artist' && (
+              <>
+                <div className="fs-sheet-head">
+                  <button className="icon" onClick={() => setMenuView('main')} aria-label="返回"><Icon name="arrow-left" /></button>
+                  <span className="sh-title">歌手详情</span>
+                </div>
+                <div className="fs-artist-hero">
+                  <div className="fs-artist-ava">{(it.artist ?? '?').slice(0, 1)}</div>
+                  <div className="fs-artist-name">{it.artist ?? '未知艺术家'}</div>
+                  <div className="fs-artist-tags">歌手 · 列表内 {state.queue.filter((q) => q.artist === it.artist).length} 首</div>
+                </div>
+                <div className="fs-artist-acts">
+                  <button className="fs-pill primary2" onClick={() => { setShowMenu(false); player.playAt(state.index); }}>播放全部</button>
+                  <button className="fs-pill" onClick={() => library.toggleFavorite(it)}>{fav ? '已收藏' : '收藏'}</button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

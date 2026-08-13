@@ -139,7 +139,7 @@ export function SettingsPage({ onOpenMyMusic }: { onOpenMyMusic: (t: 'favorites'
 
       {/* ===== 子页 ===== */}
       {sub === 'import' && <ImportSourcePage mediaType="music" onClose={() => setSub(null)} />}
-      {sub === 'switch' && <SourceListPage mediaType="music" title="音源切换" onClose={() => setSub(null)} />}
+      {sub === 'switch' && <SourceListPage mediaType="music" title="仓库管理" onClose={() => setSub(null)} />}
 
       {sub === 'downloads' && (
         <SubPage title="离线缓存" onBack={() => setSub(null)}>

@@ -49,17 +49,74 @@ async function fetchText(url: string): Promise<string> {
   }
 }
 
+// 影视仓 / TVBox 接口常为 base64 密文，尝试解码（仅当整段像 base64 时）
+function b64DecodeSafe(t: string): string | null {
+  const s = t.replace(/\s/g, '');
+  if (!/^[A-Za-z0-9+/=_\-]{24,}$/.test(s)) return null;
+  try {
+    const bin = atob(s.replace(/[-_]/g, (c) => (c === '-' ? '+' : '/')));
+    if (bin.startsWith('{') || bin.startsWith('[')) return bin;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+// TVBox / 影视仓：顶层 { sites:[{key,name,api/url}], spider, wallpaper } → 多个 video-cms 源
+function flattenTvbox(data: any): any[] {
+  if (data && Array.isArray(data.sites)) {
+    return data.sites
+      .filter((s: any) => s && (s.api || s.url || s.baseUrl))
+      .map((s: any, i: number) => ({
+        name: s.name || s.key || `站点${i + 1}`,
+        type: 'video-cms',
+        baseUrl: s.api || s.url || s.baseUrl,
+      }));
+  }
+  return [];
+}
+
+// 落雪式 .js 音源：去掉 ESM 语法后用沙箱求值，尝试拿到导出的 source 对象
+function extractJsSource(code: string): any | null {
+  const src = code
+    .replace(/^\s*import[^\n;]*;?\s*$/gm, '')
+    .replace(/export\s+default\s+/g, 'var __exp = ')
+    .replace(/export\s+/g, '');
+  try {
+    const cap: any = {};
+    const fn = new Function(
+      'module', 'exports', 'window', 'document', 'localStorage', 'navigator', '__cap',
+      src +
+        '\n;try{__cap.v=(typeof __exp!=="undefined")?__exp:(typeof rule!=="undefined")?rule:(typeof source!=="undefined")?source:(typeof bookSource!=="undefined")?bookSource:(typeof cfg!=="undefined")?cfg:null;}catch(e){}'
+    );
+    fn(undefined, undefined, {}, { document: {} }, {}, {}, {}, cap);
+    return cap.v || null;
+  } catch {
+    return null;
+  }
+}
+
 function parseFetched(text: string, url: string): FetchResult {
-  const trimmed = text.trim();
+  let trimmed = text.trim();
+
+  // 加密接口常为 base64 密文，先尝试解码再解析
+  const decoded = b64DecodeSafe(trimmed);
+  if (decoded) {
+    const r = parseFetched(decoded, url);
+    if (r.kind !== 'error') return r;
+    trimmed = decoded; // 解码后当作明文继续
+  }
 
   if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
     try {
       const data = JSON.parse(trimmed);
+      const tb = flattenTvbox(data);
+      if (tb.length) return { kind: 'sources', sources: tb };
       const arr = Array.isArray(data) ? data : Array.isArray(data?.sources) ? data.sources : [data];
       const valid = normalize(arr);
       if (valid.length) return { kind: 'sources', sources: valid };
     } catch {
-      /* 不是 JSON，往下走 HTML 分支 */
+      /* 不是 JSON，往下走 HTML / JS 分支 */
     }
   }
 
@@ -73,7 +130,19 @@ function parseFetched(text: string, url: string): FetchResult {
   }
   const uniq = [...new Set(links)];
   if (uniq.length) return { kind: 'links', links: uniq };
-  return { kind: 'error', message: '未在该页面识别到可用的源配置，请改用「本地文件」或手动粘贴。' };
+
+  // 落雪式 .js 音源：尝试提取导出的 source 对象
+  if (/\.js(\?|$)/i.test(url) || /export\s+default|module\.exports|var\s+rule|const\s+rule|bookSource/.test(text)) {
+    const cfg = extractJsSource(text);
+    if (cfg && (cfg.baseUrl || cfg.api || cfg.search)) {
+      return {
+        kind: 'sources',
+        sources: normalize([{ ...cfg, name: cfg.name || '导入音源', type: cfg.type || 'music-json' }]),
+      };
+    }
+  }
+
+  return { kind: 'error', message: '未在该地址识别到可用的源配置，请改用「本地文件」或手动粘贴。' };
 }
 
 export async function fetchFromUrl(input: string): Promise<FetchResult> {

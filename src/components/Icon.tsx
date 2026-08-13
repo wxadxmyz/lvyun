@@ -48,6 +48,9 @@ const P: Record<string, ReactNode> = {
   pause: <g fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2" /><rect x="14" y="5" width="4" height="14" rx="1.2" /></g>,
   'skip-back': <><path d="M19 5v14l-9-7z" fill="currentColor" /><rect x="5" y="5" width="2.4" height="14" fill="currentColor" rx="1" /></>,
   'skip-forward': <><path d="M5 5v14l9-7z" fill="currentColor" /><rect x="16.6" y="5" width="2.4" height="14" fill="currentColor" rx="1" /></>,
+  // 播放器顶栏：左=播放列表(汉堡)，右=更多(三点竖排)
+  menu: <><path d="M3 6h18" /><path d="M3 12h18" /><path d="M3 18h18" /></>,
+  'more-vertical': <><circle cx="12" cy="5" r="1.7" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none" /><circle cx="12" cy="19" r="1.7" fill="currentColor" stroke="none" /></>,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof P;
