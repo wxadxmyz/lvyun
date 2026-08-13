@@ -106,7 +106,6 @@ export function SettingsPage({ onOpenMyMusic }: { onOpenMyMusic: (t: 'favorites'
           <ToggleRow icon="shuffle" label="随机播放" on={settings.shuffle} onChange={(v) => update({ shuffle: v })} />
           <ToggleRow icon="arrow-up" label="上下滑切歌手势" desc="播放页上下滑动切换歌曲" on={settings.swipeGesture} onChange={(v) => update({ swipeGesture: v })} />
           <ToggleRow icon="clock" label="睡眠定时" desc="定时停止播放" on={settings.sleepTimer > 0} onChange={(v) => update({ sleepTimer: v ? 30 : 0 })} />
-          <ToggleRow icon="camera" label="封面模糊背景" desc="播放页以封面作模糊背景" on={settings.blurCover} onChange={(v) => update({ blurCover: v })} />
         </div>
 
         {/* 外观 */}
@@ -114,6 +113,7 @@ export function SettingsPage({ onOpenMyMusic }: { onOpenMyMusic: (t: 'favorites'
         <div className="settings-card">
           <NavRow icon="palette" label="主题色" value={settings.themeColor || '蓝'} onClick={() => setSub('theme')} />
           <ToggleRow icon="sliders" label="深色模式" on={settings.darkMode} onChange={(v) => update({ darkMode: v })} />
+          <ToggleRow icon="camera" label="封面模糊背景" desc="播放页以封面作模糊背景" on={settings.blurCover} onChange={(v) => update({ blurCover: v })} />
         </div>
 
         {/* 通用 */}
