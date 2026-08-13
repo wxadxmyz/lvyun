@@ -22,6 +22,7 @@ export interface AppSettings {
   shuffle: boolean; // 随机播放
   swipeGesture: boolean; // 上下滑切歌手势
   sleepTimer: number; // 睡眠定时（分钟，0=关闭）
+  sleepEnd: boolean; // 睡眠定时：播完本曲后停止
   blurCover: boolean; // 封面模糊背景
 }
 
@@ -48,6 +49,7 @@ const DEFAULTS: AppSettings = {
   shuffle: false,
   swipeGesture: true,
   sleepTimer: 0,
+  sleepEnd: false,
   blurCover: true,
 };
 

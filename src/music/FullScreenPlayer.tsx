@@ -43,7 +43,20 @@ export function FullScreenPlayer({
   const [speed, setSpeed] = useState(settings.playbackRate || 1);
   const [eqGains, setEqGainsLocal] = useState<number[]>(getEqGains());
   const [eqPreset, setEqPreset] = useState('关闭');
-  const [sleepMode, setSleepMode] = useState<SleepMode>('off');
+  const [sleepMode, setSleepMode] = useState<SleepMode>(
+    settings.sleepEnd ? 'end' : settings.sleepTimer > 0 ? (String(settings.sleepTimer) as SleepMode) : 'off',
+  );
+  // 应用到播放器并持久化到设置（与设置页睡眠定时子页共用一份状态）
+  const applySleep = (m: SleepMode) => {
+    setSleepMode(m);
+    if (m === 'off') update({ sleepTimer: 0, sleepEnd: false });
+    else if (m === 'end') update({ sleepTimer: 0, sleepEnd: true });
+    else update({ sleepTimer: Number(m), sleepEnd: false });
+  };
+  useEffect(() => {
+    setSleepMode(settings.sleepEnd ? 'end' : settings.sleepTimer > 0 ? (String(settings.sleepTimer) as SleepMode) : 'off');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.sleepTimer, settings.sleepEnd]);
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -117,7 +130,7 @@ export function FullScreenPlayer({
     const start = performance.now();
     const step = () => {
       const t = (performance.now() - start) / 3000;
-      if (t >= 1) { a.volume = target; player.toggle(); setSleepMode('off'); return; }
+      if (t >= 1) { a.volume = target; player.toggle(); applySleep('off'); return; }
       a.volume = target * (1 - t);
       requestAnimationFrame(step);
     };
@@ -260,7 +273,7 @@ export function FullScreenPlayer({
           <div className="fs-panel-head">睡眠定时（到时淡出暂停）</div>
           <div className="eq-presets">
             {([['off', '关闭'], ['15', '15 分钟'], ['30', '30 分钟'], ['60', '60 分钟'], ['end', '播完本曲']] as [SleepMode, string][]).map(([m, label]) => (
-              <button key={m} className={'mini' + (sleepMode === m ? ' active' : '')} onClick={() => setSleepMode(m)}>{label}</button>
+              <button key={m} className={'mini' + (sleepMode === m ? ' active' : '')} onClick={() => applySleep(m)}>{label}</button>
             ))}
           </div>
         </div>

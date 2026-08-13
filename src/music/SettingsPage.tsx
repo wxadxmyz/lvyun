@@ -8,7 +8,7 @@ import { SourceListPage } from '../components/SourceListPage';
 import { Icon } from '../components/Icon';
 import { checkForUpdate } from '../lib/tauriBridge';
 
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.2.2';
 
 function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -62,6 +62,19 @@ export function SettingsPage({ onOpenMyMusic }: { onOpenMyMusic: (t: 'favorites'
     update({ themeColor: c });
   };
 
+  // 睡眠定时：把 settings.sleepTimer/sleepEnd 翻译成展示文案
+  const sleepLabel = (): string => {
+    if (settings.sleepEnd) return '播完本曲';
+    if (settings.sleepTimer > 0) return `${settings.sleepTimer} 分钟`;
+    return '关';
+  };
+  const setSleep = (mode: 'off' | '15' | '30' | '60' | 'end') => {
+    if (mode === 'off') update({ sleepTimer: 0, sleepEnd: false });
+    else if (mode === 'end') update({ sleepTimer: 0, sleepEnd: true });
+    else update({ sleepTimer: Number(mode), sleepEnd: false });
+    setSub(null);
+  };
+
   return (
     <>
       <div className="settings-scroll">
@@ -105,7 +118,7 @@ export function SettingsPage({ onOpenMyMusic }: { onOpenMyMusic: (t: 'favorites'
           </div>
           <ToggleRow icon="shuffle" label="随机播放" on={settings.shuffle} onChange={(v) => update({ shuffle: v })} />
           <ToggleRow icon="arrow-up" label="上下滑切歌手势" desc="播放页上下滑动切换歌曲" on={settings.swipeGesture} onChange={(v) => update({ swipeGesture: v })} />
-          <ToggleRow icon="clock" label="睡眠定时" desc="定时停止播放" on={settings.sleepTimer > 0} onChange={(v) => update({ sleepTimer: v ? 30 : 0 })} />
+          <NavRow icon="clock" label="睡眠定时" value={sleepLabel()} onClick={() => setSub('sleep')} />
         </div>
 
         {/* 外观 */}
@@ -150,6 +163,35 @@ export function SettingsPage({ onOpenMyMusic }: { onOpenMyMusic: (t: 'favorites'
               <span className="value">3</span>
             </div>
           </div>
+        </SubPage>
+      )}
+
+      {sub === 'sleep' && (
+        <SubPage title="睡眠定时" onBack={() => setSub(null)}>
+          <div className="settings-card">
+            {([
+              ['off', '关闭'],
+              ['15', '15 分钟'],
+              ['30', '30 分钟'],
+              ['60', '60 分钟'],
+              ['end', '播完本曲'],
+            ] as ['off' | '15' | '30' | '60' | 'end', string][]).map(([mode, label]) => {
+              const active =
+                (mode === 'off' && !settings.sleepEnd && settings.sleepTimer === 0) ||
+                (mode === 'end' && settings.sleepEnd) ||
+                (mode !== 'off' && mode !== 'end' && settings.sleepTimer === Number(mode));
+              return (
+                <div key={mode} className={`settings-row tap${active ? ' active' : ''}`} onClick={() => setSleep(mode)}>
+                  <span className="ico">
+                    <Icon name="clock" size={20} />
+                  </span>
+                  <span className="label">{label}</span>
+                  {active && <span className="value"><Icon name="check" size={18} /></span>}
+                </div>
+              );
+            })}
+          </div>
+          <p className="settings-note">到点后将淡出并暂停播放。</p>
         </SubPage>
       )}
 

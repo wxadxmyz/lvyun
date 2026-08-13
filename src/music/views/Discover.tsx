@@ -6,8 +6,6 @@ import { SourceConfig } from '../../engine/types';
 import { gradientFor, initial } from '../../lib/cover';
 import { Icon } from '../../components/Icon';
 
-const CATEGORIES = ['华语', '流行', '轻音乐', '经典老歌', '电子', '动漫', '摇滚'];
-
 export function Discover({
   sources,
   library,
@@ -31,16 +29,12 @@ export function Discover({
     aggregateSearch(sources, '').then((r) => setAll(r.items.filter((i) => i.mediaType === 'music')));
   }, [sources]);
 
-  const recent = library.lib.history.filter((i) => i.mediaType === 'music');
-  const favs = library.lib.favorites.filter((i) => i.mediaType === 'music');
-  const hot = all.slice(0, 8);
-
-  const Row = ({ title, items, onPlayAll }: { title: string; items: MediaItem[]; onPlayAll?: () => void }) => (
+  const PlaylistSection = ({ title, items }: { title: string; items: MediaItem[] }) => (
     <section className="row-section">
       <div className="row-head">
         <h3>{title}</h3>
-        {onPlayAll && items.length > 0 && (
-          <button className="link" onClick={onPlayAll}><Icon name="play" size={14} /> 播放全部</button>
+        {items.length > 0 && (
+          <button className="link" onClick={() => playback.playList(items)}><Icon name="play" size={14} /> 播放全部</button>
         )}
       </div>
       <div className="row-cards">
@@ -63,8 +57,8 @@ export function Discover({
     <div className="home-top">
       <div className="ht-logo">音<span className="dot">流</span></div>
       <div className="ht-actions">
-        <button className="ht-ico" onClick={() => onSearch('')} title="搜索"><Icon name="search" size={20} /></button>
-        <button className="ht-ico" onClick={onOpenHistory} title="历史"><Icon name="clock" size={20} /></button>
+        <button className="ht-ico" onClick={() => onSearch('')} title="搜索"><Icon name="search" size={22} /></button>
+        <button className="ht-ico" onClick={onOpenHistory} title="历史"><Icon name="clock" size={22} /></button>
       </div>
     </div>
   );
@@ -75,7 +69,7 @@ export function Discover({
         {homeTop}
         <div className="blank-state">
           <div className="blank-art"><Icon name="music" size={44} /></div>
-          <h2>导入音源，发现好音乐</h2>
+          <h2>导入音乐源发现音乐</h2>
           <p className="muted">在「设置 → 音源管理」里导入一个 JSON 音源，<br />推荐歌单与搜索就会在这里出现。</p>
           <button className="import-fab" onClick={onOpenSources}>
             <Icon name="plus" size={18} /> 导入音源
@@ -99,15 +93,7 @@ export function Discover({
         <button className="primary" onClick={() => q.trim() && onSearch(q.trim())}>搜索</button>
       </div>
 
-      <div className="chips">
-        {CATEGORIES.map((c) => (
-          <button key={c} className="chip" onClick={() => onSearch(c)}>{c}</button>
-        ))}
-      </div>
-
-      <Row title="最近播放" items={recent} onPlayAll={() => playback.playList(recent)} />
-      <Row title="我喜欢的" items={favs} onPlayAll={() => playback.playList(favs)} />
-      <Row title="热门歌曲" items={hot} onPlayAll={() => playback.playList(hot)} />
+      <PlaylistSection title="推荐歌单" items={all} />
     </div>
   );
 }
