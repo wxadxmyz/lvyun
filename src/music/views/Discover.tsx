@@ -22,7 +22,6 @@ export function Discover({
   onOpenHistory: () => void;
 }) {
   const [all, setAll] = useState<MediaItem[]>([]);
-  const [q, setQ] = useState('');
 
   useEffect(() => {
     if (sources.length === 0) return;
@@ -82,16 +81,6 @@ export function Discover({
   return (
     <div className="view discover">
       {homeTop}
-      <div className="search-bar big">
-        <span className="search-ico"><Icon name="search" size={18} /></span>
-        <input
-          value={q}
-          placeholder="搜索歌曲 / 歌手 / 专辑…"
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && q.trim()) onSearch(q.trim()); }}
-        />
-        <button className="primary" onClick={() => q.trim() && onSearch(q.trim())}>搜索</button>
-      </div>
 
       <PlaylistSection title="推荐歌单" items={all} />
     </div>
