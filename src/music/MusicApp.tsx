@@ -13,6 +13,7 @@ import { Discover } from './views/Discover';
 import { MyMusicModal } from './MyMusicModal';
 import { SettingsPage } from './SettingsPage';
 import { Disclaimer } from '../components/Disclaimer';
+import { gradientFor, initial } from '../lib/cover';
 import { Icon } from '../components/Icon';
 
 type Tab = 'home' | 'player' | 'settings';
@@ -31,6 +32,7 @@ export default function MusicApp() {
   const [myMusic, setMyMusic] = useState<null | 'favorites' | 'playlists'>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string | undefined>(undefined);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     if (settings.themeColor) {
@@ -59,6 +61,27 @@ export default function MusicApp() {
   const goSearch = (q: string) => {
     setSearchQuery(q);
     setSearchOpen(true);
+  };
+
+  // 「历史播放记录」列表：点击右上角时钟图标打开
+  const HistoryList = () => {
+    const items = library.lib.history.filter((i) => i.mediaType === 'music');
+    return (
+      <div className="track-list">
+        {items.length === 0 && <div className="muted sm">还没有播放记录。</div>}
+        {items.map((it, i) => (
+          <div className="track-row" key={it.sourceId + it.id} onClick={() => playback.play(it, items, i)}>
+            <span className="tcover" style={{ background: gradientFor(it.title) }}>{initial(it.title)}</span>
+            <span className="ttitle">{it.title}</span>
+            <span className="tsub">{it.artist ?? it.year ?? ''}</span>
+            <span className="tsrc">{it.sourceName}</span>
+            <span className="tactions">
+              <button className="mini" title="播放" onClick={() => playback.play(it, items, i)}><Icon name="play" size={16} /></button>
+            </span>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   const openSources = () => setTab('settings');
@@ -101,10 +124,7 @@ export default function MusicApp() {
             playback={playback}
             onSearch={goSearch}
             onOpenSources={openSources}
-            onOpenHistory={() => {
-              setSearchQuery(undefined);
-              setSearchOpen(true);
-            }}
+            onOpenHistory={() => setHistoryOpen(true)}
           />
         )}
 
@@ -113,30 +133,73 @@ export default function MusicApp() {
         )}
         {tab === 'player' && !state.current && (
           <div className="fs-player fs-empty">
-            <div className="fs-empty-inner">
-              <div className="fs-cover empty">
-                <Icon name="music" size={56} />
-              </div>
-              <h3 className="fs-title">未在播放</h3>
-              <div className="fs-ctrls">
-                <button className="fs-btn" disabled>
-                  <Icon name="skip-back" size={22} />
-                </button>
-                <button className="fs-btn play" disabled>
-                  <Icon name="play" size={26} />
-                </button>
-                <button className="fs-btn" disabled>
-                  <Icon name="skip-forward" size={22} />
-                </button>
-              </div>
-              <button className="primary" onClick={() => setTab('home')}>
-                去主页听听
+            <div className="fs-top">
+              <button className="icon" disabled>
+                <Icon name="chevron-down" />
               </button>
+              <span className="fs-now">正在播放</span>
+              <button className="icon" disabled>
+                <Icon name="list" />
+              </button>
+            </div>
+            <div className="fs-body">
+              <div className="fs-disc-wrap">
+                <div className="fs-disc">
+                  <span className="ph" style={{ background: 'var(--panel2)' }}>
+                    <Icon name="music" size={56} />
+                  </span>
+                </div>
+              </div>
+              <div className="fs-info">
+                <h1 className="fs-title">未在播放</h1>
+                <div className="fs-progress">
+                  <span className="t">0:00</span>
+                  <input type="range" disabled />
+                  <span className="t">-0:00</span>
+                </div>
+                <div className="fs-ctrl">
+                  <button className="icon" disabled>
+                    <Icon name="repeat" />
+                  </button>
+                  <button className="icon big" disabled>
+                    <Icon name="skip-back" />
+                  </button>
+                  <button className="icon play big" disabled>
+                    <Icon name="play" />
+                  </button>
+                  <button className="icon big" disabled>
+                    <Icon name="skip-forward" />
+                  </button>
+                  <button className="icon" disabled>
+                    <Icon name="heart" />
+                  </button>
+                </div>
+                <button className="primary" onClick={() => setTab('home')}>
+                  去主页听听
+                </button>
+              </div>
             </div>
           </div>
         )}
 
         {tab === 'settings' && <SettingsPage onOpenMyMusic={setMyMusic} />}
+
+        {historyOpen && (
+          <div className="fullpage">
+            <div className="fullpage-head">
+              <button className="icon" onClick={() => setHistoryOpen(false)}>
+                <Icon name="arrow-left" />
+              </button>
+              <h3>历史播放</h3>
+              {library.lib.history.some((i) => i.mediaType === 'music') && (
+                <button className="link" style={{ marginLeft: 'auto' }} onClick={() => library.clearHistory()}>清空</button>
+              )}
+            </div>
+            <div className="fullpage-body">
+              <HistoryList />
+            </div>
+          </div>
+        )}
 
         {searchOpen && (
           <div className="fullpage">

@@ -1,6 +1,6 @@
 [package]
 name = "meloflow"
-version = "1.2.3"
+version = "1.2.4"
 description = "音流 - 可自定义 API 音源的音乐播放器"
 authors = ["MeloFlow Contributors"]
 edition = "2021"
