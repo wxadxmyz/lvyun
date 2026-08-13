@@ -618,3 +618,29 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .disclaimer-body p { margin: 0 0 12px; }
 .disclaimer-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin: 8px 0 16px; }
 .disclaimer-check input { width: 16px; height: 16px; }
+
+/* 搜索页（设计稿：返回 + 圆角搜索框 + 搜索按钮，无标题） */
+.searchview{flex:1;overflow-y:auto;background:var(--bg);}
+.searchview .searchtop{position:sticky;top:0;z-index:6;background:var(--bg);display:flex;align-items:center;gap:10px;padding:calc(10px + var(--sat)) 14px 8px;border-bottom:1px solid var(--border);}
+.searchview .searchtop .sback{width:34px;height:34px;display:flex;align-items:center;justify-content:center;color:var(--text);background:transparent;border:none;padding:0;flex:none;}
+.searchview .searchtop .sinput{flex:1;height:38px;border-radius:19px;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 12px;}
+.searchview .searchtop .sinput input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:14px;min-width:0;padding:0;height:auto;box-shadow:none;}
+.searchview .searchtop .sinput .search-ico{color:var(--muted);display:flex;}
+.searchview .searchtop .sclear{width:18px;height:18px;border-radius:50%;background:#3a3a42;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none;border:none;cursor:pointer;padding:0;line-height:1;}
+
+/* 播放页竖屏适配（对齐设计稿：圆角封面居中 + 进度条 + 控制按钮） */
+@media (max-width: 820px) {
+  .fs-player .fs-body{flex-direction:column;gap:8px;padding:0 22px;text-align:center;}
+  .fs-player .fs-disc{width:210px;height:210px;border-radius:22px;border:none;background:var(--card);box-shadow:0 20px 48px rgba(0,0,0,.5);}
+  .fs-player .fs-disc .ph{width:100%;height:100%;border-radius:22px;font-size:52px;}
+  .fs-player .fs-disc img{width:100%;height:100%;border-radius:22px;object-fit:cover;}
+  .fs-player .fs-info{width:100%;}
+  .fs-player .fs-title{font-size:18px;margin:16px 0 4px;font-weight:700;}
+  .fs-player .fs-artist{font-size:13px;color:var(--muted);margin-bottom:4px;}
+  .fs-player .fs-progress{justify-content:space-between;margin:14px 0 4px;}
+  .fs-player .fs-ctrl{justify-content:center;margin-top:8px;}
+  .fs-player .fs-ctrl .icon{width:42px;height:42px;font-size:16px;border:1px solid var(--border);border-radius:50%;background:var(--card);color:var(--text);display:flex;align-items:center;justify-content:center;}
+  .fs-player .fs-ctrl .icon.big{width:44px;height:44px;}
+  .fs-player .fs-ctrl .icon.play{width:60px;height:60px;background:var(--accent);color:#fff;border-color:transparent;box-shadow:0 10px 26px rgba(255,92,138,.45);}
+  .fs-player .fs-ctrl .icon[disabled]{opacity:.35;}
+}

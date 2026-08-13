@@ -174,9 +174,6 @@ export default function MusicApp() {
                     <Icon name="heart" />
                   </button>
                 </div>
-                <button className="primary" onClick={() => setTab('home')}>
-                  去主页听听
-                </button>
               </div>
             </div>
           </div>
@@ -203,23 +200,16 @@ export default function MusicApp() {
 
         {searchOpen && (
           <div className="fullpage">
-            <div className="fullpage-head">
-              <button className="icon" onClick={() => setSearchOpen(false)}>
-                <Icon name="arrow-left" />
-              </button>
-              <h3>搜索</h3>
-            </div>
-            <div className="fullpage-body">
-              <SearchView
-                sources={store.sources}
-                onPlay={(it) => playback.play(it)}
-                onQueue={(its) => player.enqueue(its)}
-                library={library}
-                mediaType="music"
-                placeholder="搜索歌曲 / 歌手 / 专辑…"
-                initialQuery={searchQuery}
-              />
-            </div>
+            <SearchView
+              onClose={() => setSearchOpen(false)}
+              sources={store.sources}
+              onPlay={(it) => playback.play(it)}
+              onQueue={(its) => player.enqueue(its)}
+              library={library}
+              mediaType="music"
+              placeholder="搜索歌曲 / 歌手 / 专辑…"
+              initialQuery={searchQuery}
+            />
           </div>
         )}
 
