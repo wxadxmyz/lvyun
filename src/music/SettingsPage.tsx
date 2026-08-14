@@ -8,7 +8,7 @@ import { SourceListPage } from '../components/SourceListPage';
 import { Icon } from '../components/Icon';
 import { checkForUpdate } from '../lib/tauriBridge';
 
-const APP_VERSION = '1.2.4';
+const APP_VERSION = '2.0.0';
 
 function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (

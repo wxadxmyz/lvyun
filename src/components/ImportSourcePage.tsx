@@ -34,7 +34,7 @@ export function ImportSourcePage({
       sources.map((s) => ({ ...s, name: s.name || name.trim() || s.api || s.baseUrl || '导入源' })),
     );
     const r = store.importSources(text);
-    const hasVideo = sources.some((s) => s.type === 'tvbox' || s.type === 'video-cms');
+    const hasVideo = sources.some((s) => s.type === 'tvbox');
     if (r.added > 0) {
       let msg = `已成功导入 ${r.added} 个源`;
       if (mediaType === 'music' && hasVideo) {
