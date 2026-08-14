@@ -4,7 +4,7 @@ import { getAnalyser, getEqGains, setEqGains, subscribeEq, EQ_PRESETS, EQ_BANDS 
 import { useSettings } from '../lib/settings';
 import type { useLibrary } from '../lib/library';
 import { SourceConfig } from '../engine/types';
-import { gradientFor, initial } from '../lib/cover';
+import { gradientFor } from '../lib/cover';
 import { Icon } from '../components/Icon';
 
 const MODE_ICON: Record<string, { icon: 'repeat' | 'repeat-one' | 'shuffle'; label: string }> = {
@@ -186,10 +186,15 @@ export function FullScreenPlayer({
 
       <div className="fs-body">
         <div className="fs-disc-wrap" onClick={() => setLyricsOpen((v) => !v)} style={{ cursor: 'pointer' }}>
-          <div className={'fs-disc' + (state.isPlaying ? ' spinning' : '')}>
-            {it.cover ? <img src={it.cover} alt="" /> : <span className="ph" style={{ background: gradientFor(it.title) }}>{initial(it.title)}</span>}
+          <div className={'fs-cover' + (state.isPlaying ? ' playing' : '')}>
+            {it.cover ? (
+              <img src={it.cover} alt="" />
+            ) : (
+              <span className="fs-ph" style={{ background: gradientFor(it.title) }}>
+                <Icon name="music" size={64} />
+              </span>
+            )}
           </div>
-          <div className="fs-needle" />
           <canvas ref={canvasRef} className="fs-spectrum" width={300} height={64} />
           <span className="fs-tap-hint">点击看歌词</span>
         </div>
