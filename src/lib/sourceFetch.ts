@@ -62,18 +62,20 @@ function b64DecodeSafe(t: string): string | null {
   return null;
 }
 
-// TVBox / 影视仓：顶层 { sites:[{key,name,api/url}], spider, wallpaper } → 多个 video-cms 源
-function flattenTvbox(data: any): any[] {
-  if (data && Array.isArray(data.sites)) {
-    return data.sites
-      .filter((s: any) => s && (s.api || s.url || s.baseUrl))
-      .map((s: any, i: number) => ({
-        name: s.name || s.key || `站点${i + 1}`,
-        type: 'video-cms',
-        baseUrl: s.api || s.url || s.baseUrl,
-      }));
+// TVBox / 影视仓：顶层 { sites:[...] } 或 { urls:[...] }。
+// 关键：不摊平成多个子源，而是整体作为一个 tvbox 源存储原始地址，搜索/播放时再解析。
+function isTvboxConfig(data: any): boolean {
+  return !!(data && (Array.isArray(data.sites) || Array.isArray(data.urls)));
+}
+
+function nameFromUrl(url: string): string {
+  try {
+    const h = new URL(url).hostname.replace(/^www\./, '');
+    if (h) return h;
+  } catch {
+    /* ignore */
   }
-  return [];
+  return '影视仓聚合';
 }
 
 // 落雪式 .js 音源：去掉 ESM 语法后用沙箱求值，尝试拿到导出的 source 对象
@@ -110,8 +112,13 @@ function parseFetched(text: string, url: string): FetchResult {
   if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
     try {
       const data = JSON.parse(trimmed);
-      const tb = flattenTvbox(data);
-      if (tb.length) return { kind: 'sources', sources: tb };
+      // 影视仓 / TVBox 聚合配置：整体作为「一个」tvbox 源，仓库里只显示你粘贴的这个地址
+      if (isTvboxConfig(data)) {
+        return {
+          kind: 'sources',
+          sources: [{ name: nameFromUrl(url), type: 'tvbox', baseUrl: url }],
+        };
+      }
       const arr = Array.isArray(data) ? data : Array.isArray(data?.sources) ? data.sources : [data];
       const valid = normalize(arr);
       if (valid.length) return { kind: 'sources', sources: valid };

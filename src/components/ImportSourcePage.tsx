@@ -34,8 +34,13 @@ export function ImportSourcePage({
       sources.map((s) => ({ ...s, name: s.name || name.trim() || s.api || s.baseUrl || '导入源' })),
     );
     const r = store.importSources(text);
+    const hasVideo = sources.some((s) => s.type === 'tvbox' || s.type === 'video-cms');
     if (r.added > 0) {
-      setStatus({ type: 'ok', msg: `已成功导入 ${r.added} 个源` });
+      let msg = `已成功导入 ${r.added} 个源`;
+      if (mediaType === 'music' && hasVideo) {
+        msg += '（含影视源：音乐搜索不会返回，建议在影流中使用）';
+      }
+      setStatus({ type: 'ok', msg });
       onImported?.();
     } else {
       setStatus({ type: 'err', msg: r.errors.join('；') || '导入失败' });

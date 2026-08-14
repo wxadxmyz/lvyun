@@ -228,6 +228,10 @@ export function FullScreenPlayer({
             <button className={'icon' + (sleepMode !== 'off' ? ' active' : '')} onClick={() => setShowSleep((v) => !v)} title="睡眠定时">
               {sleepMode === 'off' ? <><Icon name="clock" size={16} /> 定时</> : <><Icon name="clock" size={16} /> {sleepMode === 'end' ? '播完' : sleepMode + '分'}</>}
             </button>
+            <div className="vol" title="音量">
+              <Icon name="volume" size={18} />
+              <input type="range" min={0} max={1} step={0.01} value={state.volume} onChange={(e) => player.setVolume(Number(e.target.value))} />
+            </div>
           </div>
 
           <div className="fs-ctrl">
@@ -236,10 +240,6 @@ export function FullScreenPlayer({
             <button className="icon play big" onClick={() => player.toggle()} title={state.isPlaying ? '暂停' : '播放'}><Icon name={state.isPlaying ? 'pause' : 'play'} /></button>
             <button className="icon big" onClick={() => player.next()} title="下一首"><Icon name="skip-forward" /></button>
             <button className={'icon' + (fav ? ' fav' : '')} onClick={() => library.toggleFavorite(it)} title="收藏"><Icon name={fav ? 'heart-filled' : 'heart'} /></button>
-            <div className="vol">
-              <Icon name="volume" size={18} />
-              <input type="range" min={0} max={1} step={0.01} value={state.volume} onChange={(e) => player.setVolume(Number(e.target.value))} />
-            </div>
           </div>
         </div>
       </div>
