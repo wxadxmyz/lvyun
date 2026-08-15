@@ -174,10 +174,25 @@ export function FullScreenPlayer({
         }
       }}
     >
+      <style>{`
+        .fs-player .fs-progress input[type=range]{ -webkit-appearance:none; appearance:none; height:4px; border-radius:2px; background:rgba(255,255,255,0.22); }
+        .fs-player .fs-progress input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:#ff5c8a; box-shadow:0 0 0 4px rgba(255,92,138,0.22); }
+        .fs-player .fs-progress input[type=range]::-moz-range-thumb{ width:14px; height:14px; border:none; border-radius:50%; background:#ff5c8a; }
+        .fs-player .fs-ctrl .play.big{ background:#ff5c8a !important; box-shadow:0 8px 24px rgba(255,92,138,0.5) !important; color:#fff !important; }
+        .fs-player .fs-cover{ transition:box-shadow .3s; }
+      `}</style>
       <div
         className="fs-bg"
-        style={{ backgroundImage: it.cover ? `url(${it.cover})` : gradientFor(it.title) }}
+        style={{
+          backgroundImage: it.cover ? `url(${it.cover})` : undefined,
+          backgroundColor: it.cover ? undefined : gradientFor(it.title),
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          filter: 'blur(40px) brightness(0.55)',
+          transform: 'scale(1.25)',
+        }}
       />
+      <div className="fs-bg-mask" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.42)' }} />
       <div className="fs-top">
         <button className="icon" onClick={() => setShowPlaylist(true)} title="播放列表"><Icon name="menu" /></button>
         <span className="fs-now">正 在 播 放</span>
@@ -186,11 +201,14 @@ export function FullScreenPlayer({
 
       <div className="fs-body">
         <div className="fs-disc-wrap" onClick={() => setLyricsOpen((v) => !v)} style={{ cursor: 'pointer' }}>
-          <div className={'fs-cover' + (state.isPlaying ? ' playing' : '')}>
+          <div
+            className={'fs-cover' + (state.isPlaying ? ' playing' : '')}
+            style={{ width: 200, height: 200, borderRadius: 16, animation: 'none', boxShadow: '0 18px 48px rgba(0,0,0,0.5)', overflow: 'hidden' }}
+          >
             {it.cover ? (
-              <img src={it.cover} alt="" />
+              <img src={it.cover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
-              <span className="fs-ph" style={{ background: gradientFor(it.title) }}>
+              <span className="fs-ph" style={{ background: gradientFor(it.title), width: '100%', height: '100%' }}>
                 <Icon name="music" size={64} />
               </span>
             )}
@@ -242,7 +260,12 @@ export function FullScreenPlayer({
           <div className="fs-ctrl">
             <button className="icon" onClick={() => player.setMode(state.mode === 'list' ? 'one' : state.mode === 'one' ? 'shuffle' : 'list')} title="循环模式"><Icon name={MODE_ICON[state.mode].icon} /></button>
             <button className="icon big" onClick={() => player.prev()} title="上一首"><Icon name="skip-back" /></button>
-            <button className="icon play big" onClick={() => player.toggle()} title={state.isPlaying ? '暂停' : '播放'}><Icon name={state.isPlaying ? 'pause' : 'play'} /></button>
+            <button
+              className="icon play big"
+              style={{ width: 60, height: 60, borderRadius: '50%', background: '#ff5c8a', color: '#fff', boxShadow: '0 8px 24px rgba(255,92,138,0.5)' }}
+              onClick={() => player.toggle()}
+              title={state.isPlaying ? '暂停' : '播放'}
+            ><Icon name={state.isPlaying ? 'pause' : 'play'} /></button>
             <button className="icon big" onClick={() => player.next()} title="下一首"><Icon name="skip-forward" /></button>
             <button className={'icon' + (fav ? ' fav' : '')} onClick={() => library.toggleFavorite(it)} title="收藏"><Icon name={fav ? 'heart-filled' : 'heart'} /></button>
           </div>

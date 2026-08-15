@@ -15,6 +15,7 @@ import { SettingsPage } from './SettingsPage';
 import { Disclaimer } from '../components/Disclaimer';
 import { gradientFor, initial } from '../lib/cover';
 import { Icon } from '../components/Icon';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 type Tab = 'home' | 'player' | 'settings';
 const ORDER: Tab[] = ['home', 'player', 'settings'];
@@ -41,6 +42,51 @@ export default function MusicApp() {
       document.documentElement.style.setProperty('--accent2', settings.themeColor);
     }
   }, [settings.themeColor]);
+
+  // 手势返回：Android 返回键 / 侧滑逐级返回，而非直接退出到桌面
+  const navRef = useRef({
+    tab: 'home' as Tab,
+    searchOpen: false,
+    myMusic: null as null | 'favorites' | 'playlists',
+    showDebug: false,
+    historyOpen: false,
+    settingsSub: null as string | null,
+  });
+  navRef.current = { tab, searchOpen, myMusic, showDebug, historyOpen, settingsSub };
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      try {
+        const un = await getCurrentWindow().onBackButton((event) => {
+          const s = navRef.current;
+          if (s.showDebug) {
+            event.preventDefault();
+            setShowDebug(false);
+          } else if (s.searchOpen) {
+            event.preventDefault();
+            setSearchOpen(false);
+          } else if (s.myMusic) {
+            event.preventDefault();
+            setMyMusic(null);
+          } else if (s.historyOpen) {
+            event.preventDefault();
+            setHistoryOpen(false);
+          } else if (s.settingsSub) {
+            event.preventDefault();
+            setSettingsSub(null);
+          } else if (s.tab !== 'home') {
+            event.preventDefault();
+            setTab('home');
+          }
+          // 否则不拦截，交给系统退出 App
+        });
+        unlisten = un;
+      } catch {
+        /* 不支持 onBackButton 的环境忽略 */
+      }
+    })();
+    return () => unlisten?.();
+  }, []);
 
   // touchStart ref for swipe navigation
   const onTouchStart = (e: React.TouchEvent) => {
