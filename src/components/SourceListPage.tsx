@@ -48,17 +48,17 @@ export function SourceListPage({
                 title="启用 / 停用"
               />
               <div className="sc-actions">
-                <button className="icon sm" title="上移" disabled={i === 0} onClick={() => store.move(s.id, -1)}>
-                  <Icon name="arrow-up" size={16} />
+                <button className="action-chip" disabled={i === 0} onClick={() => store.move(s.id, -1)}>
+                  上移
                 </button>
-                <button className="icon sm" title="下移" onClick={() => store.move(s.id, 1)}>
-                  <Icon name="arrow-down" size={16} />
+                <button className="action-chip" onClick={() => store.move(s.id, 1)}>
+                  下移
                 </button>
-                <button className="icon sm danger" title="删除" onClick={() => store.remove(s.id)}>
-                  <Icon name="trash" size={16} />
+                <button className="action-chip danger" onClick={() => store.remove(s.id)}>
+                  删除
                 </button>
-                <button className="icon sm" title="调试" onClick={() => runTest(s)}>
-                  {status[s.id] === 'testing' ? <span className="muted sm">…</span> : status[s.id] === 'ok' ? <Icon name="check" size={16} /> : status[s.id] === 'fail' ? <Icon name="x-circle" size={16} /> : <Icon name="bug" size={16} />}
+                <button className="action-chip" onClick={() => runTest(s)}>
+                  {status[s.id] === 'testing' ? '测…' : status[s.id] === 'ok' ? '通' : status[s.id] === 'fail' ? '不通' : '调试'}
                 </button>
               </div>
             </div>
