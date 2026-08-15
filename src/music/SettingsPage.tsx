@@ -8,7 +8,7 @@ import { SourceListPage } from '../components/SourceListPage';
 import { Icon } from '../components/Icon';
 import { checkForUpdate } from '../lib/tauriBridge';
 
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';
 
 function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -48,11 +48,18 @@ function ToggleRow({ icon, label, desc, on, onChange }: { icon: any; label: stri
 
 const ACCENTS = ['#4f8cff', '#ff5d73', '#23c08b', '#ff9f43', '#a66bff', '#1ec8e8', '#f4b2c0', '#ff6b9d'];
 
-export function SettingsPage({ onOpenMyMusic }: { onOpenMyMusic: (t: 'favorites' | 'playlists') => void }) {
+export function SettingsPage({
+  onOpenMyMusic,
+  sub,
+  setSub,
+}: {
+  onOpenMyMusic: (t: 'favorites' | 'playlists') => void;
+  sub: string | null;
+  setSub: (v: string | null) => void;
+}) {
   const store = useSources('music');
   const library = useLibrary('music');
   const { settings, update } = useSettings();
-  const [sub, setSub] = useState<string | null>(null);
   const [updateState, setUpdateState] = useState('');
   const [checking, setChecking] = useState(false);
 

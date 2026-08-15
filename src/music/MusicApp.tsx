@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useSources } from '../store';
 import { useLibrary } from '../lib/library';
 import { usePlayback } from '../lib/playback';
@@ -33,6 +34,7 @@ export default function MusicApp() {
   const [showDebug, setShowDebug] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string | undefined>(undefined);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [settingsSub, setSettingsSub] = useState<string | null>(null);
 
   useEffect(() => {
     if (settings.themeColor) {
@@ -40,6 +42,60 @@ export default function MusicApp() {
       document.documentElement.style.setProperty('--accent2', settings.themeColor);
     }
   }, [settings.themeColor]);
+
+  // 系统返回手势 / 返回键：逐级关闭最上层，到根 Tab 才放行退出（Android）
+  const navRef = useRef({ showDebug, searchOpen, myMusic, historyOpen, tab, settingsSub });
+  navRef.current = { showDebug, searchOpen, myMusic, historyOpen, tab, settingsSub };
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    getCurrentWindow()
+      .onBackButton((event) => {
+        const n = navRef.current;
+        if (n.showDebug) {
+          setShowDebug(false);
+          event.preventDefault();
+          return;
+        }
+        if (n.searchOpen) {
+          setSearchOpen(false);
+          event.preventDefault();
+          return;
+        }
+        if (n.myMusic) {
+          setMyMusic(null);
+          event.preventDefault();
+          return;
+        }
+        if (n.historyOpen) {
+          setHistoryOpen(false);
+          event.preventDefault();
+          return;
+        }
+        if (n.tab === 'player') {
+          setTab('home');
+          event.preventDefault();
+          return;
+        }
+        if (n.tab === 'settings' && n.settingsSub) {
+          setSettingsSub(null);
+          event.preventDefault();
+          return;
+        }
+        if (n.tab === 'settings') {
+          setTab('home');
+          event.preventDefault();
+          return;
+        }
+        // 已在根 Tab（主页），不拦截，交给系统退出
+      })
+      .then((u) => {
+        unlisten = u;
+      })
+      .catch(() => {});
+    return () => {
+      unlisten?.();
+    };
+  }, []);
 
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const onTouchStart = (e: React.TouchEvent) => {
@@ -179,7 +235,7 @@ export default function MusicApp() {
           </div>
         )}
 
-        {tab === 'settings' && <SettingsPage onOpenMyMusic={setMyMusic} />}
+        {tab === 'settings' && <SettingsPage onOpenMyMusic={setMyMusic} sub={settingsSub} setSub={setSettingsSub} />}
 
         {historyOpen && (
           <div className="fullpage">
