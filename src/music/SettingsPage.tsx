@@ -8,7 +8,7 @@ import { SourceListPage } from '../components/SourceListPage';
 import { Icon } from '../components/Icon';
 import { checkForUpdate } from '../lib/tauriBridge';
 
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.1';
 
 function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -51,6 +51,7 @@ const ACCENTS = ['#4f8cff', '#ff5d73', '#23c08b', '#ff9f43', '#a66bff', '#1ec8e8
 // 主题色 hex → 中文名映射，设置页展示中文而非原始色值
 const ACCENT_NAMES: Record<string, string> = {
   '#4f8cff': '蓝',
+  '#ff5c8a': '粉',
   '#ff5d73': '粉红',
   '#23c08b': '翠绿',
   '#ff9f43': '橙',
