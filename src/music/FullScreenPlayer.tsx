@@ -190,7 +190,7 @@ export function FullScreenPlayer({
             {it.cover ? (
               <img src={it.cover} alt="" />
             ) : (
-              <span className="fs-ph" style={{ background: gradientFor(it.title) }}>
+              <span className="fs-ph" style={{ background: 'linear-gradient(140deg, var(--accent), #33243f)' }}>
                 <Icon name="music" size={64} />
               </span>
             )}

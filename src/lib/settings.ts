@@ -44,7 +44,7 @@ const DEFAULTS: AppSettings = {
   subtitleStyle: { size: 24, color: '#ffffff', position: 'bottom', outline: true, bg: false },
   disclaimerAccepted: false,
   darkMode: true,
-  themeColor: undefined,
+  themeColor: '#ff5c8a', // 默认主题色：粉（对齐 UI 设计稿；未设置时设置页显示“粉”）
   wallpaper: undefined,
   shuffle: false,
   swipeGesture: true,

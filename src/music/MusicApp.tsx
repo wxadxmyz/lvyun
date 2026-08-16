@@ -43,6 +43,7 @@ export default function MusicApp() {
   }, [settings.themeColor]);
 
   // touchStart ref for swipe navigation
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
   const onTouchStart = (e: React.TouchEvent) => {
     touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
   };
@@ -58,6 +59,21 @@ export default function MusicApp() {
       else if (dx > 0 && i > 0) setTab(ORDER[i - 1]);
     }
   };
+
+  // Android 系统返回键/手势：优先关闭当前弹层或回到上一级，而非直接退出 App。
+  // 需配合 src-tauri/gen/android/.../MainActivity.kt 的 onBackPressed 覆写（见交付说明）。
+  useEffect(() => {
+    (window as any).androidBackCallback = () => {
+      if (searchOpen) { setSearchOpen(false); return false; }
+      if (myMusic) { setMyMusic(null); return false; }
+      if (historyOpen) { setHistoryOpen(false); return false; }
+      if (settingsSub) { setSettingsSub(null); return false; }
+      if (tab !== 'home') { setTab('home'); return false; }
+      return true; // 首页：允许退出
+    };
+    return () => { delete (window as any).androidBackCallback; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchOpen, myMusic, historyOpen, settingsSub, tab]);
 
   const goSearch = (q: string) => {
     setSearchQuery(q);
@@ -144,36 +160,23 @@ export default function MusicApp() {
               </button>
             </div>
             <div className="fs-body">
-              <div className="fs-disc-wrap">
-                <div className="fs-disc">
-                  <span className="ph" style={{ background: 'var(--panel2)' }}>
-                    <Icon name="music" size={56} />
-                  </span>
-                </div>
+              <div className="fs-cover empty">
+                <Icon name="music" size={56} />
               </div>
               <div className="fs-info">
                 <h1 className="fs-title">未在播放</h1>
+                <div className="fs-artist" style={{ opacity: 0 }}>占位</div>
                 <div className="fs-progress">
                   <span className="t">0:00</span>
                   <input type="range" disabled />
                   <span className="t">-0:00</span>
                 </div>
                 <div className="fs-ctrl">
-                  <button className="icon" disabled>
-                    <Icon name="repeat" />
-                  </button>
-                  <button className="icon big" disabled>
-                    <Icon name="skip-back" />
-                  </button>
-                  <button className="icon play big" disabled>
-                    <Icon name="play" />
-                  </button>
-                  <button className="icon big" disabled>
-                    <Icon name="skip-forward" />
-                  </button>
-                  <button className="icon" disabled>
-                    <Icon name="heart" />
-                  </button>
+                  <button className="icon" disabled><Icon name="repeat" /></button>
+                  <button className="icon big" disabled><Icon name="skip-back" /></button>
+                  <button className="icon play big" disabled><Icon name="play" /></button>
+                  <button className="icon big" disabled><Icon name="skip-forward" /></button>
+                  <button className="icon" disabled><Icon name="heart" /></button>
                 </div>
               </div>
             </div>

@@ -46,7 +46,20 @@ function ToggleRow({ icon, label, desc, on, onChange }: { icon: any; label: stri
   );
 }
 
-const ACCENTS = ['#4f8cff', '#ff5d73', '#23c08b', '#ff9f43', '#a66bff', '#1ec8e8', '#f4b2c0', '#ff6b9d'];
+const ACCENTS = ['#ff5c8a', '#4f8cff', '#ff5d73', '#23c08b', '#ff9f43', '#a66bff', '#1ec8e8', '#f4b2c0', '#ff6b9d'];
+
+// 主题色 → 中文名（设置页展示用，对齐 UI 设计稿的“粉/蓝/…”）
+const ACCENT_NAMES: Record<string, string> = {
+  '#ff5c8a': '粉',
+  '#4f8cff': '蓝',
+  '#ff5d73': '红',
+  '#23c08b': '绿',
+  '#ff9f43': '橙',
+  '#a66bff': '紫',
+  '#1ec8e8': '青',
+  '#f4b2c0': '浅粉',
+  '#ff6b9d': '玫红',
+};
 
 export function SettingsPage({
   onOpenMyMusic,
@@ -131,7 +144,7 @@ export function SettingsPage({
         {/* 外观 */}
         <div className="settings-group-title">外观</div>
         <div className="settings-card">
-          <NavRow icon="palette" label="主题色" value={settings.themeColor || '蓝'} onClick={() => setSub('theme')} />
+          <NavRow icon="palette" label="主题色" value={settings.themeColor ? (ACCENT_NAMES[settings.themeColor] ?? '自定义') : '粉'} onClick={() => setSub('theme')} />
           <ToggleRow icon="sliders" label="深色模式" on={settings.darkMode} onChange={(v) => update({ darkMode: v })} />
           <ToggleRow icon="camera" label="封面模糊背景" desc="播放页以封面作模糊背景" on={settings.blurCover} onChange={(v) => update({ blurCover: v })} />
         </div>
