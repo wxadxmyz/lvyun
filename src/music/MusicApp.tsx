@@ -43,6 +43,21 @@ export default function MusicApp() {
     }
   }, [settings.themeColor]);
 
+  // Android 原生返回键桥接：Kotlin MainActivity 通过 __onAndroidBack 调用此函数
+  useEffect(() => {
+    (window as any).__onAndroidBack = () => {
+      const s = navRef.current;
+      if (s.showDebug) { setShowDebug(false); return false; }
+      if (s.searchOpen) { setSearchOpen(false); return false; }
+      if (s.myMusic) { setMyMusic(null); return false; }
+      if (s.historyOpen) { setHistoryOpen(false); return false; }
+      if (s.settingsSub) { setSettingsSub(null); return false; }
+      if (s.tab !== 'home') { setTab('home'); return false; }
+      return true; // 不拦截，交给系统退出
+    };
+    return () => { delete (window as any).__onAndroidBack; };
+  }, []);
+
   // 手势返回：Android 返回键 / 侧滑逐级返回，而非直接退出到桌面
   const navRef = useRef({
     tab: 'home' as Tab,
@@ -89,6 +104,7 @@ export default function MusicApp() {
   }, []);
 
   // touchStart ref for swipe navigation
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
   const onTouchStart = (e: React.TouchEvent) => {
     touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
   };
@@ -191,10 +207,11 @@ export default function MusicApp() {
             </div>
             <div className="fs-body">
               <div className="fs-disc-wrap">
-                <div className="fs-disc">
-                  <span className="ph" style={{ background: 'var(--panel2)' }}>
-                    <Icon name="music" size={56} />
-                  </span>
+                <div
+                  className="fs-cover empty"
+                  style={{ width: 200, height: 200, borderRadius: 16, boxShadow: '0 18px 48px rgba(0,0,0,0.5)', overflow: 'hidden', background: 'linear-gradient(135deg, #ff5c8a, #b15bff)' }}
+                >
+                  <Icon name="music" size={64} />
                 </div>
               </div>
               <div className="fs-info">
