@@ -15,6 +15,7 @@ import { SettingsPage } from './SettingsPage';
 import { Disclaimer } from '../components/Disclaimer';
 import { gradientFor, initial } from '../lib/cover';
 import { Icon } from '../components/Icon';
+import SplashScreen from '../components/SplashScreen';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 type Tab = 'home' | 'player' | 'settings';
@@ -150,7 +151,13 @@ export default function MusicApp() {
   const openSources = () => setTab('settings');
 
   return (
-    <div className="app music-theme" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+    <>
+      <SplashScreen
+        appName="音流"
+        iconSrc={import.meta.env.BASE_URL + 'icon.png'}
+        gradient="linear-gradient(160deg, #FF7AB6 0%, #C05CFF 45%, #3A1E5C 100%)"
+      />
+      <div className="app music-theme" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <header className="topbar">
         <div className="brand">
           <span className="logo">
@@ -308,5 +315,6 @@ export default function MusicApp() {
       <Disclaimer onAccept={() => {}} />
       {showDebug && <DebugPanel onClose={() => setShowDebug(false)} />}
     </div>
+    </>
   );
 }
