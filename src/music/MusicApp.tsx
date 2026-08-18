@@ -48,6 +48,7 @@ export default function MusicApp() {
   useEffect(() => {
     (window as any).__onAndroidBack = () => {
       const s = navRef.current;
+      if ((window as any).__playerBack && (window as any).__playerBack()) return false;
       if (s.showDebug) { setShowDebug(false); return false; }
       if (s.searchOpen) { setSearchOpen(false); return false; }
       if (s.myMusic) { setMyMusic(null); return false; }
@@ -75,6 +76,7 @@ export default function MusicApp() {
       try {
         const un = await getCurrentWindow().onBackButton((event) => {
           const s = navRef.current;
+          if ((window as any).__playerBack && (window as any).__playerBack()) { event.preventDefault(); return; }
           if (s.showDebug) {
             event.preventDefault();
             setShowDebug(false);

@@ -60,6 +60,22 @@ export function FullScreenPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.sleepTimer, settings.sleepEnd]);
   const [lyricsOpen, setLyricsOpen] = useState(false);
+
+  // 播放器内部浮层纳入系统返回手势栈：返回先关最上层浮层，再交由 MusicApp 退出播放页
+  useEffect(() => {
+    (window as any).__playerBack = () => {
+      if (showPlaylist) { setShowPlaylist(false); return true; }
+      if (showMenu) {
+        if (menuView !== 'main') { setMenuView('main'); return true; }
+        setShowMenu(false); return true;
+      }
+      if (showEq) { setShowEq(false); return true; }
+      if (showSleep) { setShowSleep(false); return true; }
+      if (lyricsOpen) { setLyricsOpen(false); return true; }
+      return false;
+    };
+    return () => { delete (window as any).__playerBack; };
+  }, [showPlaylist, showMenu, menuView, showEq, showSleep, lyricsOpen]);
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
@@ -262,7 +278,7 @@ export function FullScreenPlayer({
             <button className="icon big" onClick={() => player.prev()} title="上一首"><Icon name="skip-back" /></button>
             <button
               className="icon play big"
-              style={{ width: 60, height: 60, borderRadius: '50%', background: '#ff5c8a', color: '#fff', boxShadow: '0 8px 24px rgba(255,92,138,0.5)' }}
+              style={{ width: 72, height: 72, borderRadius: '50%', background: '#ff5c8a', color: '#fff', boxShadow: '0 8px 24px rgba(255,92,138,0.5)' }}
               onClick={() => player.toggle()}
               title={state.isPlaying ? '暂停' : '播放'}
             ><Icon name={state.isPlaying ? 'pause' : 'play'} /></button>
