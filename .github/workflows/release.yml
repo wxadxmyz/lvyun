@@ -62,5 +62,5 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: '律云 v__VERSION__'
-          releaseBody: '音流 MeloFlow 桌面安装包（Windows / macOS / Linux）'
+          releaseBody: '律云 LvYun 桌面安装包（Windows / macOS / Linux）'
           args: ${{ matrix.args }}
