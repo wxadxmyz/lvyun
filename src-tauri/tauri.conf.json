@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "音流",
-  "version": "2.3.1",
+  "productName": "律云",
+  "version": "2.3.6",
   "identifier": "com.meloflow.app",
   "build": {
     "frontendDist": "../dist",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "音流 MeloFlow",
+        "title": "律云 LvYun",
         "url": "music.html",
         "width": 1120,
         "height": 740,
@@ -46,7 +46,7 @@
     ],
     "category": "Music",
     "shortDescription": "可自定义 API 音源的音乐播放器",
-    "longDescription": "音流 MeloFlow 是一款支持自定义 API 音源的音乐播放器：跨源搜索、歌单/收藏/历史、全屏播放器、桌面歌词、频谱可视化、可拖拽播放队列，数据全部本地存储。桌面端(Tauri 打包)已接入系统托盘、真·全局快捷键(窗口失焦可用媒体键控制)、开机自启、下载完成系统通知、自动更新；锁屏/后台媒体控制基于系统媒体会话。引擎为纯框架，不含任何内置音源。",
+    "longDescription": "律云 LvYun 是一款支持自定义 API 音源的音乐播放器：跨源搜索、歌单/收藏/历史、全屏播放器、桌面歌词、频谱可视化、可拖拽播放队列，数据全部本地存储。桌面端(Tauri 打包)已接入系统托盘、真·全局快捷键(窗口失焦可用媒体键控制)、开机自启、下载完成系统通知、自动更新；锁屏/后台媒体控制基于系统媒体会话。引擎为纯框架，不含任何内置音源。",
     "windows": {
       "nsis": {
         "languages": [

@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { MediaItem, MediaSource, PlayUrl, SourceConfig } from '../types';
 
-// v2.3.0 统一 JS 引擎源适配器（音流版）
+// v2.3.0 统一 JS 引擎源适配器（律云版）
 // 执行 spider 脚本驱动任意音乐源（洛雪风格 / 网上各种 JS 音乐蜘蛛）。脚本经 Rust
 // run_spider 命令在 QuickJS 沙箱内运行，网络请求由 fetch 桥接回 Rust 代理。
 // spider 约定函数：search(key) / detail(id) / play(url)

@@ -9,7 +9,7 @@ import { Icon } from '../components/Icon';
 import { checkForUpdate } from '../lib/tauriBridge';
 import { useSkin, SKINS } from '../lib/theme';
 
-const APP_VERSION = '2.3.5';
+const APP_VERSION = '2.3.6';
 
 function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -294,7 +294,7 @@ export function SettingsPage({
       {sub === 'about' && (
         <SubPage title="关于" onBack={() => setSub(null)}>
           <div className="about-box">
-            <h2>音流 MeloFlow</h2>
+            <h2>律云 LvYun</h2>
             <p className="muted">版本 v{APP_VERSION}</p>
             <p className="about-desc">
               一款开源的本地音乐聚合播放工具，内容来自用户自行添加的第三方音源，软件本身不提供任何资源。

@@ -1,9 +1,9 @@
 {
   "name": "meloflow",
   "private": true,
-  "version": "2.3.5",
+  "version": "2.3.6",
   "type": "module",
-  "description": "音流 MeloFlow - 支持自定义 API 音源的音乐播放器（Tauri 桌面端）",
+  "description": "律云 LvYun - 支持自定义 API 音源的音乐播放器（Tauri 桌面端）",
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",

@@ -174,6 +174,9 @@ export function FullScreenPlayer({
     setDragIndex(null);
   };
 
+  // 进度百分比（粉红填充轨道用）
+  const pct = state.duration > 0 ? Math.min(100, (state.progress / state.duration) * 100) : 0;
+
   return (
     <div
       className="fs-player"
@@ -191,9 +194,11 @@ export function FullScreenPlayer({
       }}
     >
       <style>{`
-        .fs-player .fs-progress input[type=range]{ -webkit-appearance:none; appearance:none; height:4px; border-radius:2px; background:rgba(255,255,255,0.22); }
-        .fs-player .fs-progress input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:#ff5c8a; box-shadow:0 0 0 4px rgba(255,92,138,0.22); }
-        .fs-player .fs-progress input[type=range]::-moz-range-thumb{ width:14px; height:14px; border:none; border-radius:50%; background:#ff5c8a; }
+        .fs-player .fs-progress{ display:flex; flex-direction:column; align-items:stretch; gap:8px; }
+        .fs-player .fs-progress input[type=range]{ -webkit-appearance:none; appearance:none; width:100%; height:4px; border-radius:2px; background:linear-gradient(to right, #ff5c8a var(--fill,0%), rgba(255,255,255,0.22) var(--fill,0%)); }
+        .fs-player .fs-progress input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:16px; height:16px; border-radius:50%; background:#fff; box-shadow:0 0 0 4px rgba(255,255,255,0.16), 0 2px 8px rgba(0,0,0,0.3); }
+        .fs-player .fs-progress input[type=range]::-moz-range-thumb{ width:16px; height:16px; border:none; border-radius:50%; background:#fff; }
+        .fs-player .fs-progress-time{ display:flex; align-items:center; justify-content:center; gap:8px; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
         .fs-player .fs-ctrl .play.big{ background:#ff5c8a !important; box-shadow:0 8px 24px rgba(255,92,138,0.5) !important; color:#fff !important; }
         .fs-player .fs-cover{ transition:box-shadow .3s; }
       `}</style>
@@ -247,8 +252,7 @@ export function FullScreenPlayer({
             )}
           </div>
 
-          <div className="fs-progress">
-            <span className="t">{fmtTime(state.progress)}</span>
+          <div className="fs-progress" style={{ '--fill': `${pct}%` } as any}>
             <input
               type="range"
               min={0}
@@ -256,7 +260,11 @@ export function FullScreenPlayer({
               value={state.progress}
               onChange={(e) => player.seek(Number(e.target.value))}
             />
-            <span className="t">{fmtTime(state.duration)}</span>
+            <div className="fs-progress-time">
+              <span className="t">{fmtTime(state.progress)}</span>
+              <span>/</span>
+              <span className="t">{fmtTime(state.duration)}</span>
+            </div>
           </div>
 
           <div className="fs-tools">

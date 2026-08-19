@@ -30,12 +30,19 @@ export default function MusicApp() {
   useGlobalShortcuts(); // 全局快捷键：空格/←→/↑↓/M/N/P
 
   const [tab, setTab] = useState<Tab>('home');
+  const [fromTab, setFromTab] = useState<Tab>('home'); // 进入播放页前的 tab，返回时回到这里而非固定主页
   const [searchOpen, setSearchOpen] = useState(false);
   const [myMusic, setMyMusic] = useState<null | 'favorites' | 'playlists'>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string | undefined>(undefined);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsSub, setSettingsSub] = useState<string | null>(null);
+
+  // 统一切 tab：进入播放页时记忆来源 tab，供系统返回手势回退到上一级
+  const goTab = (t: Tab) => {
+    if (t === 'player') setFromTab(tab);
+    setTab(t);
+  };
 
   useEffect(() => {
     if (settings.themeColor) {
@@ -54,6 +61,7 @@ export default function MusicApp() {
       if (s.myMusic) { setMyMusic(null); return false; }
       if (s.historyOpen) { setHistoryOpen(false); return false; }
       if (s.settingsSub) { setSettingsSub(null); return false; }
+      if (s.tab === 'player') { setTab(s.fromTab); return false; } // 播放页返回上一级 tab，而非主页
       if (s.tab !== 'home') { setTab('home'); return false; }
       return true; // 不拦截，交给系统退出
     };
@@ -63,13 +71,14 @@ export default function MusicApp() {
   // 手势返回：Android 返回键 / 侧滑逐级返回，而非直接退出到桌面
   const navRef = useRef({
     tab: 'home' as Tab,
+    fromTab: 'home' as Tab,
     searchOpen: false,
     myMusic: null as null | 'favorites' | 'playlists',
     showDebug: false,
     historyOpen: false,
     settingsSub: null as string | null,
   });
-  navRef.current = { tab, searchOpen, myMusic, showDebug, historyOpen, settingsSub };
+  navRef.current = { tab, fromTab, searchOpen, myMusic, showDebug, historyOpen, settingsSub };
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     (async () => {
@@ -92,6 +101,9 @@ export default function MusicApp() {
           } else if (s.settingsSub) {
             event.preventDefault();
             setSettingsSub(null);
+          } else if (s.tab === 'player') {
+            event.preventDefault();
+            setTab(s.fromTab);
           } else if (s.tab !== 'home') {
             event.preventDefault();
             setTab('home');
@@ -119,8 +131,8 @@ export default function MusicApp() {
     // 仅横滑切界面（避免与竖向滚动/播放页上下滑冲突）
     if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
       const i = ORDER.indexOf(tab);
-      if (dx < 0 && i < ORDER.length - 1) setTab(ORDER[i + 1]);
-      else if (dx > 0 && i > 0) setTab(ORDER[i - 1]);
+      if (dx < 0 && i < ORDER.length - 1) goTab(ORDER[i + 1]);
+      else if (dx > 0 && i > 0) goTab(ORDER[i - 1]);
     }
   };
 
@@ -150,12 +162,12 @@ export default function MusicApp() {
     );
   };
 
-  const openSources = () => setTab('settings');
+  const openSources = () => goTab('settings');
 
   return (
     <>
       <SplashScreen
-        appName="音流"
+        appName="律云"
         iconSrc={import.meta.env.BASE_URL + 'icon.png'}
         gradient="linear-gradient(160deg, #FF7AB6 0%, #C05CFF 45%, #3A1E5C 100%)"
       />
@@ -165,16 +177,16 @@ export default function MusicApp() {
           <span className="logo">
             <Icon name="music" size={20} />
           </span>{' '}
-          音乐
+          律云
         </div>
         <nav className="nav">
-          <button className={tab === 'home' ? 'active' : ''} onClick={() => setTab('home')}>
+          <button className={tab === 'home' ? 'active' : ''} onClick={() => goTab('home')}>
             主页
           </button>
-          <button className={tab === 'player' ? 'active' : ''} onClick={() => setTab('player')}>
+          <button className={tab === 'player' ? 'active' : ''} onClick={() => goTab('player')}>
             播放
           </button>
-          <button className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}>
+          <button className={tab === 'settings' ? 'active' : ''} onClick={() => goTab('settings')}>
             设置
           </button>
         </nav>
@@ -182,7 +194,7 @@ export default function MusicApp() {
           <button className="icon" onClick={() => setShowDebug(true)} title="调试">
             <Icon name="bug" />
           </button>
-          <button className="icon settings-btn" onClick={() => setTab('settings')} title="设置" aria-label="设置">
+          <button className="icon settings-btn" onClick={() => goTab('settings')} title="设置" aria-label="设置">
             <Icon name="settings" size={20} />
           </button>
         </div>
@@ -201,7 +213,7 @@ export default function MusicApp() {
         )}
 
         {tab === 'player' && state.current && (
-          <FullScreenPlayer sources={store.sources} library={library} onClose={() => setTab('home')} />
+          <FullScreenPlayer sources={store.sources} library={library} onClose={() => setTab(fromTab)} />
         )}
         {tab === 'player' && !state.current && (
           <div className="fs-player fs-empty">
@@ -225,10 +237,13 @@ export default function MusicApp() {
               </div>
               <div className="fs-info">
                 <h1 className="fs-title">未在播放</h1>
-                <div className="fs-progress">
-                  <span className="t">0:00</span>
+                <div className="fs-progress" style={{ '--fill': '0%' } as any}>
                   <input type="range" disabled />
-                  <span className="t">-0:00</span>
+                  <div className="fs-progress-time">
+                    <span className="t">0:00</span>
+                    <span>/</span>
+                    <span className="t">0:00</span>
+                  </div>
                 </div>
                 <div className="fs-ctrl">
                   <button className="icon" disabled>
@@ -294,19 +309,19 @@ export default function MusicApp() {
       </main>
 
       <nav className="bottom-nav">
-        <button className={tab === 'home' ? 'active' : ''} onClick={() => setTab('home')}>
+        <button className={tab === 'home' ? 'active' : ''} onClick={() => goTab('home')}>
           <span className="ico">
             <Icon name="home" />
           </span>
           <span>主页</span>
         </button>
-        <button className={tab === 'player' ? 'active' : ''} onClick={() => setTab('player')}>
+        <button className={tab === 'player' ? 'active' : ''} onClick={() => goTab('player')}>
           <span className="ico">
             <Icon name="music" />
           </span>
           <span>播放</span>
         </button>
-        <button className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}>
+        <button className={tab === 'settings' ? 'active' : ''} onClick={() => goTab('settings')}>
           <span className="ico">
             <Icon name="settings" />
           </span>
