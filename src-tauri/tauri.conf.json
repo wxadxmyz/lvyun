@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "律云",
   "version": "2.3.6",
-  "identifier": "com.meloflow.app",
+  "identifier": "com.lvyun.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
