@@ -51,6 +51,10 @@ const P: Record<string, ReactNode> = {
   // 播放器顶栏：左=播放列表(汉堡)，右=更多(三点竖排)
   menu: <><path d="M3 6h18" /><path d="M3 12h18" /><path d="M3 18h18" /></>,
   'more-vertical': <><circle cx="12" cy="5" r="1.7" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none" /><circle cx="12" cy="19" r="1.7" fill="currentColor" stroke="none" /></>,
+  // 歌手/作者（原创人像轮廓）
+  user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" /></>,
+  // 倍速（原创速度计）
+  gauge: <><path d="M12 13l4-4" /><path d="M3 13a9 9 0 1 1 18 0" /><circle cx="12" cy="13" r="1.4" fill="currentColor" stroke="none" /></>,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof P;

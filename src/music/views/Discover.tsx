@@ -5,6 +5,8 @@ import { usePlayback } from '../../lib/playback';
 import { SourceConfig } from '../../engine/types';
 import { gradientFor, initial } from '../../lib/cover';
 import { Icon } from '../../components/Icon';
+import { useToast } from '../../lib/toast';
+import { scanLocalMusic } from '../../lib/localMusic';
 
 export function Discover({
   sources,
@@ -22,6 +24,7 @@ export function Discover({
   onOpenHistory: () => void;
 }) {
   const [all, setAll] = useState<MediaItem[]>([]);
+  const toast = useToast();
 
   useEffect(() => {
     if (sources.length === 0) return;
@@ -54,8 +57,9 @@ export function Discover({
 
   const homeTop = (
     <div className="home-top">
-      <div className="ht-logo">音<span className="dot">流</span></div>
+      <div className="ht-logo">律<span className="dot">云</span></div>
       <div className="ht-actions">
+        <button className="ht-ico" onClick={() => scanLocalMusic(playback.playList, toast.push)} title="本地音乐"><Icon name="folder" size={22} /></button>
         <button className="ht-ico" onClick={() => onSearch('')} title="搜索"><Icon name="search" size={22} /></button>
         <button className="ht-ico" onClick={onOpenHistory} title="历史"><Icon name="clock" size={22} /></button>
       </div>

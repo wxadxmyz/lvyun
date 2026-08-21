@@ -11,6 +11,8 @@ permissions:
 
 jobs:
   desktop:
+    # 律云当前仅发布安卓版，桌面端维持 v1.0.0 不再构建（与发布策略一致）。
+    if: false
     name: 桌面端（Windows / macOS / Linux）
     strategy:
       fail-fast: false
