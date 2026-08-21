@@ -1,7 +1,7 @@
 {
   "name": "lvyun",
   "private": true,
-  "version": "2.3.6",
+  "version": "2.3.7",
   "type": "module",
   "description": "律云 LvYun - 支持自定义 API 音源的音乐播放器（Tauri 桌面端）",
   "scripts": {

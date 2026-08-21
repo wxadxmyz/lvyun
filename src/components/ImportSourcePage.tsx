@@ -38,7 +38,7 @@ export function ImportSourcePage({
     if (r.added > 0) {
       let msg = `已成功导入 ${r.added} 个源`;
       if (mediaType === 'music' && hasVideo) {
-        msg += '（含影视源：音乐搜索不会返回，建议在影流中使用）';
+        msg += '（含影视源：音乐搜索不会返回，建议在幕海中使用）';
       }
       setStatus({ type: 'ok', msg });
       onImported?.();

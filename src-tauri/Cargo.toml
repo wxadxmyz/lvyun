@@ -1,6 +1,6 @@
 [package]
-name = "meloflow"
-version = "2.3.1"
+name = "lvyun"
+version = "2.3.7"
 description = "律云 - 可自定义 API 音源的音乐播放器"
 authors = ["LvYun Contributors"]
 edition = "2021"
@@ -35,5 +35,5 @@ name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
-name = "meloflow"
+name = "lvyun"
 path = "src/main.rs"

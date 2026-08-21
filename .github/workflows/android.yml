@@ -85,7 +85,7 @@ jobs:
 
       - name: Patch MainActivity (Android back-button → WebView)
         run: |
-          MAIN="src-tauri/gen/android/app/src/main/java/com/meloflow/app/MainActivity.kt"
+          MAIN="src-tauri/gen/android/app/src/main/java/com/lvyun/app/MainActivity.kt"
           if [ ! -f "$MAIN" ]; then
             echo "MainActivity.kt not found at $MAIN, searching..."
             MAIN=$(find src-tauri/gen/android -name "MainActivity.kt" 2>/dev/null | head -1)
@@ -207,7 +207,7 @@ jobs:
         if: steps.build.outcome == 'success'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes "律云 LvYun Android APK" || true
+        run: gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes "律云 LvYun Android APK (${RELEASE_TAG})" || true
 
       - name: Upload APK to Release
         id: upload

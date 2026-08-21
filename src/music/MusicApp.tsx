@@ -212,59 +212,8 @@ export default function MusicApp() {
           />
         )}
 
-        {tab === 'player' && state.current && (
+        {tab === 'player' && (
           <FullScreenPlayer sources={store.sources} library={library} onClose={() => setTab(fromTab)} />
-        )}
-        {tab === 'player' && !state.current && (
-          <div className="fs-player fs-empty">
-            <div className="fs-top">
-              <button className="icon" disabled>
-                <Icon name="chevron-down" />
-              </button>
-              <span className="fs-now">正在播放</span>
-              <button className="icon" disabled>
-                <Icon name="list" />
-              </button>
-            </div>
-            <div className="fs-body">
-              <div className="fs-disc-wrap">
-                <div
-                  className="fs-cover empty"
-                  style={{ width: 200, height: 200, borderRadius: 16, boxShadow: '0 18px 48px rgba(0,0,0,0.5)', overflow: 'hidden', background: 'linear-gradient(135deg, #ff5c8a, #b15bff)' }}
-                >
-                  <Icon name="music" size={64} />
-                </div>
-              </div>
-              <div className="fs-info">
-                <h1 className="fs-title">未在播放</h1>
-                <div className="fs-progress" style={{ '--fill': '0%' } as any}>
-                  <input type="range" disabled />
-                  <div className="fs-progress-time">
-                    <span className="t">0:00</span>
-                    <span>/</span>
-                    <span className="t">0:00</span>
-                  </div>
-                </div>
-                <div className="fs-ctrl">
-                  <button className="icon" disabled>
-                    <Icon name="repeat" />
-                  </button>
-                  <button className="icon big" disabled>
-                    <Icon name="skip-back" />
-                  </button>
-                  <button className="icon play big" disabled>
-                    <Icon name="play" />
-                  </button>
-                  <button className="icon big" disabled>
-                    <Icon name="skip-forward" />
-                  </button>
-                  <button className="icon" disabled>
-                    <Icon name="heart" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
         )}
 
         {tab === 'settings' && <SettingsPage onOpenMyMusic={setMyMusic} sub={settingsSub} setSub={setSettingsSub} />}

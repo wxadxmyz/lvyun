@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePlayer, fmtTime, player, getAudioElement } from '../lib/playerStore';
-import { getAnalyser, getEqGains, setEqGains, subscribeEq, EQ_PRESETS, EQ_BANDS } from '../lib/spectrum';
+import { getEqGains, setEqGains, subscribeEq, EQ_PRESETS, EQ_BANDS } from '../lib/spectrum';
 import { useSettings } from '../lib/settings';
 import type { useLibrary } from '../lib/library';
 import { SourceConfig } from '../engine/types';
@@ -77,13 +77,11 @@ export function FullScreenPlayer({
     return () => { delete (window as any).__playerBack; };
   }, [showPlaylist, showMenu, menuView, showEq, showSleep, lyricsOpen]);
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rafRef = useRef<number>(0);
   const sleepTimer = useRef<number | undefined>(undefined);
 
-  if (!state.current) return null;
-  const it = state.current;
-  const fav = library.isFavorite(it);
+  const it = state.current ?? ({ title: '未在播放', artist: '', album: '', id: '', sourceId: '', cover: undefined, lyric: [] } as any);
+  const empty = !state.current;
+  const fav = state.current ? library.isFavorite(it) : false;
 
   // 歌词：优先用带时间轴的 LyricLine，其次降级的字符串数组
   const lyricLines: { time: number; text: string }[] = Array.isArray(it.lyric)
@@ -92,42 +90,6 @@ export function FullScreenPlayer({
     ? (it.raw.lyric as string[]).map((t: string) => ({ time: 0, text: t }))
     : [];
   const aLine = lyricLines.length ? activeIndex(lyricLines, state.progress) : -1;
-
-  // 频谱可视化：把真实 <audio> 接到 analyser（EQ 之后），单例避免重复创建
-  useEffect(() => {
-    const audio = getAudioElement();
-    const canvas = canvasRef.current;
-    if (!audio || !canvas) return;
-    const analyser = getAnalyser(audio);
-    if (!analyser) return;
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    const ctx2d = canvas.getContext('2d')!;
-
-    const draw = () => {
-      rafRef.current = requestAnimationFrame(draw);
-      analyser.getByteFrequencyData(data);
-      const w = canvas.width;
-      const h = canvas.height;
-      ctx2d.clearRect(0, 0, w, h);
-      const bars = data.length;
-      const gap = 3;
-      const bw = (w - gap * (bars - 1)) / bars;
-      const a1 = getCss('--accent') || '#6a8cff';
-      const a2 = getCss('--accent2') || '#b15bff';
-      for (let i = 0; i < bars; i++) {
-        const v = data[i] / 255;
-        const bh = Math.max(2, v * h);
-        const grad = ctx2d.createLinearGradient(0, h, 0, h - bh);
-        grad.addColorStop(0, a1);
-        grad.addColorStop(1, a2);
-        ctx2d.fillStyle = grad;
-        ctx2d.fillRect(i * (bw + gap), h - bh, bw, bh);
-      }
-    };
-    draw();
-    return () => cancelAnimationFrame(rafRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [it.id]);
 
   // 倍速：同步到 <audio> 并记忆
   useEffect(() => {
@@ -164,10 +126,6 @@ export function FullScreenPlayer({
     if (sleepMode === 'end' && state.duration > 0 && state.progress >= state.duration - 1) fadeOutAndPause();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sleepMode, state.progress, state.duration]);
-
-  function getCss(name: string): string {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  }
 
   const drop = (to: number) => {
     if (dragIndex !== null && dragIndex !== to) player.reorderQueue(dragIndex, to);
@@ -220,78 +178,53 @@ export function FullScreenPlayer({
         <button className="icon" onClick={() => { setMenuView('main'); setShowMenu(true); }} title="更多"><Icon name="more-vertical" /></button>
       </div>
 
-      <div className="fs-body">
+      <div className="fs-stage">
         <div className="fs-disc-wrap" onClick={() => setLyricsOpen((v) => !v)} style={{ cursor: 'pointer' }}>
           <div
             className={'fs-cover' + (state.isPlaying ? ' playing' : '')}
-            style={{ width: 200, height: 200, borderRadius: 16, animation: 'none', boxShadow: '0 18px 48px rgba(0,0,0,0.5)', overflow: 'hidden' }}
+            style={{ width: 200, height: 200, borderRadius: 20, animation: 'none', boxShadow: '0 18px 48px rgba(0,0,0,0.5)', overflow: 'hidden', background: it.cover ? undefined : gradientFor(it.title) }}
           >
             {it.cover ? (
               <img src={it.cover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
-              <span className="fs-ph" style={{ background: gradientFor(it.title), width: '100%', height: '100%' }}>
+              <span className="fs-ph" style={{ width: '100%', height: '100%' }}>
                 <Icon name="music" size={64} />
               </span>
             )}
           </div>
-          <canvas ref={canvasRef} className="fs-spectrum" width={300} height={64} />
-          <span className="fs-tap-hint">点击看歌词</span>
         </div>
 
-        <div className="fs-info">
+        <div className="fs-meta">
           <h1 className="fs-title">{it.title}</h1>
           <div className="fs-artist">{it.artist ?? ''} {it.album ? '· 《' + it.album + '》' : ''}</div>
+        </div>
 
-          <div className="fs-lyric">
-            {lyricLines.length ? (
-              lyricLines.map((l, i) => (
-                <p key={i} className={'lyric-line' + (i === aLine ? ' active' : '')}>{l.text || '·'}</p>
-              ))
-            ) : (
-              <p className="lyric-line muted">[ 暂无歌词 ] 接入真实音源后将逐行显示歌词。</p>
-            )}
-          </div>
-
+        <div className="fs-ctrls">
           <div className="fs-progress" style={{ '--fill': `${pct}%` } as any}>
             <input
               type="range"
               min={0}
               max={state.duration || 0}
               value={state.progress}
+              disabled={empty}
               onChange={(e) => player.seek(Number(e.target.value))}
             />
-            <div className="fs-progress-time">
+            <div className="fs-times">
               <span className="t">{fmtTime(state.progress)}</span>
-              <span>/</span>
               <span className="t">{fmtTime(state.duration)}</span>
             </div>
           </div>
 
-          <div className="fs-tools">
-            <select className="fs-speed" value={speed} onChange={(e) => setSpeed(Number(e.target.value))} title="倍速">
-              {SPEEDS.map((s) => <option key={s} value={s}>{s === 1 ? '原速' : s + 'x'}</option>)}
-            </select>
-            <button className={'icon' + (showEq ? ' active' : '')} onClick={() => setShowEq((v) => !v)} title="均衡器"><Icon name="sliders" /> 音效</button>
-            <button className={'icon' + (sleepMode !== 'off' ? ' active' : '')} onClick={() => setShowSleep((v) => !v)} title="睡眠定时">
-              {sleepMode === 'off' ? <><Icon name="clock" size={16} /> 定时</> : <><Icon name="clock" size={16} /> {sleepMode === 'end' ? '播完' : sleepMode + '分'}</>}
-            </button>
-            <div className="vol" title="音量">
-              <Icon name="volume" size={18} />
-              <input type="range" min={0} max={1} step={0.01} value={state.volume} onChange={(e) => player.setVolume(Number(e.target.value))} />
-            </div>
-          </div>
-
-          <div className="fs-ctrl">
-            <button className="icon" onClick={() => player.setMode(state.mode === 'list' ? 'one' : state.mode === 'one' ? 'shuffle' : 'list')} title="循环模式"><Icon name={MODE_ICON[state.mode].icon} /></button>
-            <button className="icon big" onClick={() => player.prev()} title="上一首"><Icon name="skip-back" /></button>
+          <div className="fs-btns">
+            <button className="fs-btn" disabled={empty} onClick={() => player.setMode(state.mode === 'list' ? 'one' : state.mode === 'one' ? 'shuffle' : 'list')} title="循环模式"><Icon name={MODE_ICON[state.mode].icon} /></button>
+            <button className="fs-btn" disabled={empty} onClick={() => player.prev()} title="上一首"><Icon name="skip-back" /></button>
             <button
-              className="icon play big"
-              style={{ width: 72, height: 72, borderRadius: '50%', background: '#ff5c8a', color: '#fff', boxShadow: '0 8px 24px rgba(255,92,138,0.5)' }}
+              className="fs-btn play"
               onClick={() => player.toggle()}
               title={state.isPlaying ? '暂停' : '播放'}
             ><Icon name={state.isPlaying ? 'pause' : 'play'} /></button>
-            <button className="icon big" onClick={() => player.next()} title="下一首"><Icon name="skip-forward" /></button>
-            <button className={'icon' + (fav ? ' fav' : '')} onClick={() => library.toggleFavorite(it)} title="收藏"><Icon name={fav ? 'heart-filled' : 'heart'} /></button>
+            <button className="fs-btn" disabled={empty} onClick={() => player.next()} title="下一首"><Icon name="skip-forward" /></button>
+            <button className={'fs-btn' + (fav ? ' fav' : '')} disabled={empty} onClick={() => library.toggleFavorite(it)} title="收藏"><Icon name={fav ? 'heart-filled' : 'heart'} /></button>
           </div>
         </div>
       </div>
@@ -394,26 +327,48 @@ export function FullScreenPlayer({
                   <span className="sh-title">更多</span>
                   <button className="icon" onClick={() => { setShowMenu(false); setMenuView('main'); }} aria-label="关闭"><Icon name="x" /></button>
                 </div>
-                <button className="fs-sheet-row" onClick={() => setMenuView('add')}>
-                  <span className="sr-ico"><Icon name="plus" size={20} /></span>
-                  <span className="sr-text">添加到歌单</span>
-                  <Icon name="arrow-right" className="sr-arrow" />
-                </button>
-                <button className="fs-sheet-row" onClick={() => setMenuView('speed')}>
-                  <span className="sr-ico"><Icon name="sliders" size={20} /></span>
-                  <span className="sr-text">倍速播放<span className="sr-sub">{speed === 1 ? '原速' : speed + 'x'}</span></span>
-                  <Icon name="arrow-right" className="sr-arrow" />
-                </button>
-                <button className="fs-sheet-row" onClick={() => setMenuView('timer')}>
-                  <span className="sr-ico"><Icon name="clock" size={20} /></span>
-                  <span className="sr-text">定时关闭<span className="sr-sub">{sleepMode === 'off' ? '关闭' : sleepMode === 'end' ? '播完本曲' : sleepMode + ' 分'}</span></span>
-                  <Icon name="arrow-right" className="sr-arrow" />
-                </button>
-                <button className="fs-sheet-row" onClick={() => setMenuView('artist')}>
-                  <span className="sr-ico"><Icon name="music" size={20} /></span>
-                  <span className="sr-text">歌手详情<span className="sr-sub">{it.artist ?? '未知'}</span></span>
-                  <Icon name="arrow-right" className="sr-arrow" />
-                </button>
+                {!empty && (
+                  <button className="fs-sheet-row" onClick={() => setMenuView('add')}>
+                    <span className="sr-ico"><Icon name="plus" size={20} /></span>
+                    <span className="sr-text">添加到歌单</span>
+                    <Icon name="arrow-right" className="sr-arrow" />
+                  </button>
+                )}
+                {!empty && (
+                  <button className="fs-sheet-row" onClick={() => { setShowMenu(false); setShowEq(true); }}>
+                    <span className="sr-ico"><Icon name="sliders" size={20} /></span>
+                    <span className="sr-text">音效均衡</span>
+                    <Icon name="arrow-right" className="sr-arrow" />
+                  </button>
+                )}
+                {!empty && (
+                  <button className="fs-sheet-row" onClick={() => setMenuView('speed')}>
+                    <span className="sr-ico"><Icon name="sliders" size={20} /></span>
+                    <span className="sr-text">倍速播放<span className="sr-sub">{speed === 1 ? '原速' : speed + 'x'}</span></span>
+                    <Icon name="arrow-right" className="sr-arrow" />
+                  </button>
+                )}
+                {!empty && (
+                  <button className="fs-sheet-row" onClick={() => setMenuView('timer')}>
+                    <span className="sr-ico"><Icon name="clock" size={20} /></span>
+                    <span className="sr-text">定时关闭<span className="sr-sub">{sleepMode === 'off' ? '关闭' : sleepMode === 'end' ? '播完本曲' : sleepMode + ' 分'}</span></span>
+                    <Icon name="arrow-right" className="sr-arrow" />
+                  </button>
+                )}
+                {!empty && (
+                  <button className="fs-sheet-row" onClick={() => setMenuView('volume')}>
+                    <span className="sr-ico"><Icon name="volume" size={20} /></span>
+                    <span className="sr-text">音量<span className="sr-sub">{Math.round(state.volume * 100)}%</span></span>
+                    <Icon name="arrow-right" className="sr-arrow" />
+                  </button>
+                )}
+                {!empty && (
+                  <button className="fs-sheet-row" onClick={() => setMenuView('artist')}>
+                    <span className="sr-ico"><Icon name="music" size={20} /></span>
+                    <span className="sr-text">歌手详情<span className="sr-sub">{it.artist ?? '未知'}</span></span>
+                    <Icon name="arrow-right" className="sr-arrow" />
+                  </button>
+                )}
                 <button className="fs-sheet-row danger" onClick={() => { setShowMenu(false); onClose(); }}>
                   <span className="sr-ico"><Icon name="chevron-down" size={20} /></span>
                   <span className="sr-text">收起播放器</span>
@@ -493,6 +448,22 @@ export function FullScreenPlayer({
                 <div className="fs-artist-acts">
                   <button className="fs-pill primary2" onClick={() => { setShowMenu(false); player.playAt(state.index); }}>播放全部</button>
                   <button className="fs-pill" onClick={() => library.toggleFavorite(it)}>{fav ? '已收藏' : '收藏'}</button>
+                </div>
+              </>
+            )}
+
+            {menuView === 'volume' && (
+              <>
+                <div className="fs-sheet-head">
+                  <button className="icon" onClick={() => setMenuView('main')} aria-label="返回"><Icon name="arrow-left" /></button>
+                  <span className="sh-title">音量</span>
+                </div>
+                <div className="fs-speed-val">{Math.round(state.volume * 100)}%</div>
+                <input className="fs-slider" type="range" min={0} max={1} step={0.01} value={state.volume} onChange={(e) => player.setVolume(Number(e.target.value))} />
+                <div className="fs-pill-row">
+                  {[0, 0.25, 0.5, 0.75, 1].map((v) => (
+                    <button key={v} className={'fs-pill' + (Math.abs(state.volume - v) < 0.01 ? ' active' : '')} onClick={() => player.setVolume(v)}>{Math.round(v * 100)}%</button>
+                  ))}
                 </div>
               </>
             )}

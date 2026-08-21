@@ -508,16 +508,14 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
   .toast-wrap { bottom: calc(56px + var(--sab) + 12px); }
   .desktop-lyric { bottom: calc(56px + var(--sab) + 72px); }
   .fs-queue { width: 86vw; }
-  /* 播放页在手机端改为纵向：封面在上、信息在下 */
-  .fs-body { flex-direction: column; gap: 22px; padding: 12px 16px 20px; align-items: stretch; }
-  .fs-disc-wrap { align-self: center; }
-  .fs-cover { width: 220px; height: 220px; border-radius: 28px; }
-  .fs-cover img, .fs-cover .fs-ph { border-radius: 24px; }
+  /* 播放页在手机端：封面 200、信息居中、底部控制贴底 */
+  .fs-stage { padding: 12px 16px 20px; }
+  .fs-disc-wrap { margin-top: 4px; }
+  .fs-cover { width: 200px; height: 200px; border-radius: 20px; }
+  .fs-cover img, .fs-cover .fs-ph { border-radius: 20px; }
   .fs-cover .fs-ph { font-size: 44px; }
-  .fs-spectrum { width: 220px; }
-  .fs-title { font-size: 22px; margin: 0 0 6px; }
+  .fs-title { font-size: 18px; margin: 0 0 6px; }
   .fs-artist { margin-bottom: 14px; }
-  .fs-lyric { height: auto; max-height: 28vh; }
   .fs-lyrics-full { padding: 14% 8% 12%; }
 
   /* 手机端才显示「调试」入口 */
@@ -548,15 +546,21 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
   display:flex;align-items:center;justify-content:center;}
 .bub-x:active{background:var(--accent);color:#fff;}
 
-/* 播放页空态框架 */
-.fs-cover.empty{width:200px;height:200px;border-radius:20px;margin:8px auto 0;
-  background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--sub);}
-.fs-title{margin:18px 0 14px;font-size:18px;font-weight:700;}
-.fs-ctrls{display:flex;align-items:center;justify-content:center;gap:26px;margin-bottom:18px;}
-.fs-btn{width:46px;height:46px;border-radius:50%;border:none;background:transparent;color:var(--sub);
-  display:flex;align-items:center;justify-content:center;}
-.fs-btn.play{width:62px;height:62px;background:var(--accent);color:#fff;box-shadow:0 10px 26px rgba(0,0,0,.35);}
-.fs-btn:disabled{opacity:.5;}
+/* ===== 播放器主体：竖向居中 + 底部控制贴底（对齐 律云播放器 UI 设计）===== */
+.fs-stage{ flex:1; display:flex; flex-direction:column; align-items:center; padding:16px 18px 18px; overflow:hidden; }
+.fs-disc-wrap{ display:flex; flex-direction:column; align-items:center; margin-top:6px; }
+.fs-meta{ text-align:center; margin-top:18px; }
+.fs-meta .fs-title{ font-size:18px; font-weight:700; margin:0 0 6px; }
+.fs-meta .fs-artist{ font-size:13px; color:var(--muted); }
+.fs-ctrls{ width:100%; margin-top:auto; display:flex; flex-direction:column; gap:12px; padding-top:18px; }
+.fs-times{ display:flex; justify-content:space-between; font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; margin-top:-4px; }
+.fs-btns{ display:flex; align-items:center; justify-content:space-between; }
+.fs-btn{ width:44px; height:44px; border-radius:50%; border:none; background:transparent; color:var(--text); display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.fs-btn svg{ width:22px; height:22px; }
+.fs-btn.play{ width:60px; height:60px; background:var(--accent); color:#fff; box-shadow:0 10px 26px rgba(255,92,138,.45); }
+.fs-btn.play svg{ width:26px; height:26px; fill:#fff; stroke:none; }
+.fs-btn.fav{ color:var(--accent); }
+.fs-btn:disabled{ color:var(--muted); opacity:.45; cursor:default; }
 
 /* ===== v1.2.1 新增：导入源子页 / 源列表 / 外观 / 免责声明 ===== */
 .import-page { display: flex; flex-direction: column; gap: 10px; }
