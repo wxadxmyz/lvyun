@@ -147,6 +147,7 @@ export function FullScreenPlayer({
       key: 'order', icon: 'list', label: '顺序播放',
       onClick: () => { player.setMode('list'); toast.push('已切换：列表循环'); setShowMenu(false); },
     },
+    { key: 'less', icon: 'x-circle', label: '少推荐', onClick: () => { toast.push('已减少此类推荐'); setShowMenu(false); } },
     { key: 'land', icon: 'maximize', label: '横屏播放', onClick: () => { setShowMenu(false); setShowLandscape(true); } },
   ];
 

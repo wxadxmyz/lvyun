@@ -31,10 +31,6 @@ export function SearchView({
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 
-  const suggestions =
-    mediaType === 'video'
-      ? ['科幻电影', '悬疑剧', '庆余年', '周星驰', '高分纪录片']
-      : ['周杰伦', '华语流行', '经典老歌', '轻音乐', '英文歌'];
   const showHints = !searched && kw.trim() === '';
 
   const run = async (q?: string) => {
@@ -71,9 +67,21 @@ export function SearchView({
         <div className="sinput">
           <span className="search-ico"><Icon name="search" size={18} /></span>
           <input
+            type="search"
+            enterKeyHint="search"
+            inputMode="search"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
             value={kw}
             onChange={(e) => setKw(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && run()}
+            onKeyDown={(e) => {
+              if ((e.nativeEvent as InputEvent).isComposing) return; // 中文拼音组字中：放行上屏，不搜索
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              (e.target as HTMLInputElement).blur(); // 收起软键盘
+              run();
+            }}
             placeholder={placeholder}
           />
           {kw ? <span className="sclear" onClick={() => setKw('')}>×</span> : null}
@@ -99,14 +107,6 @@ export function SearchView({
               </div>
             </div>
           )}
-          <div className="search-history">
-            <div className="sh-head"><span>建议</span></div>
-            <div className="bubbles">
-              {suggestions.map((s) => (
-                <span key={s} className="bub" onClick={() => run(s)}>{s}</span>
-              ))}
-            </div>
-          </div>
         </>
       )}
 
