@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSources } from '../store';
 import { useLibrary } from '../lib/library';
 import { useSettings } from '../lib/settings';
@@ -8,8 +8,11 @@ import { SourceListPage } from '../components/SourceListPage';
 import { Icon } from '../components/Icon';
 import { checkForUpdate } from '../lib/tauriBridge';
 import { useSkin, SKINS } from '../lib/theme';
+import { getVersion } from '@tauri-apps/api/app';
 
-const APP_VERSION = '2.3.6';
+// 回退版本：仅在取不到 Tauri 打包版本时使用（例如在浏览器里直接调试）。
+// 之前这里写死 '2.3.6'，导致 APK 已是新版本、设置页却一直显示旧号。
+const FALLBACK_VERSION = '2.3.9';
 
 function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -76,6 +79,13 @@ export function SettingsPage({
   const { settings, update } = useSettings();
   const [updateState, setUpdateState] = useState('');
   const [checking, setChecking] = useState(false);
+  const [appVersion, setAppVersion] = useState(FALLBACK_VERSION);
+  // 显示 Tauri 打包时的真实版本（tauri.conf.json 的 version），不再写死
+  useEffect(() => {
+    getVersion()
+      .then((v) => { if (v) setAppVersion(v); })
+      .catch(() => { /* 非 Tauri 环境（浏览器调试）保留回退值 */ });
+  }, []);
   const { skin, selectedId, setSkinId } = useSkin();
 
   const applyTheme = (c: string) => {
@@ -154,7 +164,7 @@ export function SettingsPage({
         {/* 通用 */}
         <div className="settings-group-title">通用</div>
         <div className="settings-card">
-          <NavRow icon="download" label="检查更新" value={`v${APP_VERSION}`} onClick={() => setSub('update')} />
+          <NavRow icon="download" label="检查更新" value={`v${appVersion}`} onClick={() => setSub('update')} />
           <NavRow icon="file-text" label="关于" onClick={() => setSub('about')} />
         </div>
       </div>
@@ -269,7 +279,7 @@ export function SettingsPage({
                 <Icon name="download" size={20} />
               </span>
               <span className="label">当前版本</span>
-              <span className="value">v{APP_VERSION}</span>
+              <span className="value">v{appVersion}</span>
             </div>
           </div>
           <button
@@ -295,7 +305,7 @@ export function SettingsPage({
         <SubPage title="关于" onBack={() => setSub(null)}>
           <div className="about-box">
             <h2>律云 LvYun</h2>
-            <p className="muted">版本 v{APP_VERSION}</p>
+            <p className="muted">版本 v{appVersion}</p>
             <p className="about-desc">
               一款开源的本地音乐聚合播放工具，内容来自用户自行添加的第三方音源，软件本身不提供任何资源。
             </p>
