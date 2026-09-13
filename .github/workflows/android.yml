@@ -143,6 +143,104 @@ jobs:
           print(f"Patched {path} with Android back-button → WebView dispatch")
           PYEOF
 
+      - name: Patch MainActivity (navigation bar tint = app background)
+        # v2.3.10：APP 走 edge-to-edge 后，系统会在底部导航栏区域叠一层半透明灰罩，
+        # 也就是用户说的「底部手势条跟背景不是一个颜色」。把导航栏底色设成主题 --bg，
+        # 灰罩与页面背景同色就视觉消失。做法对齐慕海 v3.5.0（android.yml 导航栏染色段）：
+        # 原生侧 window.navigationBarColor + JS 桥 LvYunAndroid.setNavBarColor(bg, light)。
+        # 诚实说明：Android 15 起系统强制 edge-to-edge 并废弃 navigationBarColor，
+        # 部分机型/版本可能不生效 —— 此时退化为「灰罩仍在但只压住纯背景区」。
+        run: |
+          MAIN="src-tauri/gen/android/app/src/main/java/com/lvyun/app/MainActivity.kt"
+          if [ ! -f "$MAIN" ]; then
+            MAIN=$(find src-tauri/gen/android -name "MainActivity.kt" 2>/dev/null | head -1)
+          fi
+          if [ -z "$MAIN" ]; then
+            echo "::warning::No MainActivity.kt found, skipping nav-bar patch"
+            exit 0
+          fi
+          python3 - "$MAIN" << 'PYEOF'
+          import sys
+          path = sys.argv[1]
+          src = open(path, encoding="utf-8").read()
+          if "class MainActivity" not in src:
+              print("::warning::class MainActivity not found, skip nav-bar patch")
+              sys.exit(0)
+          if "_lvApplyNavBar" in src:
+              print("::warning::nav-bar already patched, skip")
+              sys.exit(0)
+          idx = src.index("class MainActivity")
+          brace = src.index("{", idx)
+          inject = '''
+              // ===== v2.3.10：系统导航栏染色，消除底部「灰条」=====
+              private var _lvNavColor: Int? = null
+              private var _lvNavLight: Boolean = false
+              private var _lvNavBound: Boolean = false
+
+              private fun _lvFindWebView(g: android.view.ViewGroup?): android.webkit.WebView? {
+                  if (g == null) return null
+                  for (i in 0 until g.childCount) {
+                      val c = g.getChildAt(i)
+                      if (c is android.webkit.WebView) return c
+                      if (c is android.view.ViewGroup) {
+                          val f = _lvFindWebView(c)
+                          if (f != null) return f
+                      }
+                  }
+                  return null
+              }
+
+              // 未拿到前端主题色时，用应用深色底 #0E0E11 兜底，保证手势条至少与背景同色系。
+              private fun _lvApplyNavBar() {
+                  val c = _lvNavColor ?: android.graphics.Color.parseColor("#0E0E11")
+                  try {
+                      window.navigationBarColor = c
+                      if (android.os.Build.VERSION.SDK_INT >= 26) {
+                          val decor = window.decorView
+                          val flag = android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+                          decor.systemUiVisibility =
+                              if (_lvNavLight) decor.systemUiVisibility or flag
+                              else decor.systemUiVisibility and flag.inv()
+                      }
+                  } catch (e: Exception) { /* ignore */ }
+              }
+
+              private val _lvNavBridge = object {
+                  @android.webkit.JavascriptInterface
+                  fun setNavBarColor(color: String, light: Boolean) {
+                      try {
+                          _lvNavColor = android.graphics.Color.parseColor(color)
+                      } catch (e: Exception) { return }
+                      _lvNavLight = light
+                      runOnUiThread { _lvApplyNavBar() }
+                  }
+              }
+
+              // WebView 在 onCreate 之后才挂进 decorView，首帧可能取不到 —— 延后重试。
+              private fun _lvEnsureNavBridge() {
+                  if (_lvNavBound) { _lvApplyNavBar(); return }
+                  val wv = _lvFindWebView(window?.decorView as? android.view.ViewGroup) ?: return
+                  try {
+                      wv.addJavascriptInterface(_lvNavBridge, "LvYunAndroid")
+                      _lvNavBound = true
+                  } catch (e: Exception) { return }
+                  _lvApplyNavBar()
+              }
+
+              override fun onWindowFocusChanged(hasFocus: Boolean) {
+                  super.onWindowFocusChanged(hasFocus)
+                  if (!hasFocus) return
+                  _lvApplyNavBar()
+                  window?.decorView?.postDelayed({ _lvEnsureNavBridge() }, 300)
+                  window?.decorView?.postDelayed({ _lvEnsureNavBridge() }, 1200)
+                  window?.decorView?.postDelayed({ _lvEnsureNavBridge() }, 3000)
+              }
+          '''
+          src = src[:brace + 1] + inject + src[brace + 1:]
+          open(path, "w", encoding="utf-8").write(src)
+          print("Patched " + path + " with navigation-bar tint bridge")
+          PYEOF
+
       - name: Sync Android launcher icon
         run: |
           python3 -m pip install --quiet pillow

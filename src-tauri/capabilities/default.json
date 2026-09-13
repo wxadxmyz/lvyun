@@ -13,6 +13,14 @@
     "dialog:default",
     "fs:default",
     "fs:allow-write-file",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "$HOME/**" },
+        { "path": "/storage/emulated/0/**" },
+        { "path": "/sdcard/**" }
+      ]
+    },
     "notification:default",
     "autostart:default",
     "global-shortcut:default",

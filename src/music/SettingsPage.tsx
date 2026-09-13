@@ -12,7 +12,7 @@ import { getVersion } from '@tauri-apps/api/app';
 
 // 回退版本：仅在取不到 Tauri 打包版本时使用（例如在浏览器里直接调试）。
 // 之前这里写死 '2.3.6'，导致 APK 已是新版本、设置页却一直显示旧号。
-const FALLBACK_VERSION = '2.3.9';
+const FALLBACK_VERSION = '2.3.10';
 
 function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (

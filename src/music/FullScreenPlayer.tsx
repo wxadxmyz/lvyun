@@ -26,6 +26,26 @@ function activeIndex(lines: { time: number; text: string }[], progress: number):
   return idx;
 }
 
+/* ---------------------------------------------------------------------------
+ * 播放页图标：path 与 stroke-width 严格照抄设计稿（律云_ui.html ⑤⑥ 屏），
+ * 不用通用图标库，避免线宽/造型与设计稿对不上。
+ * ------------------------------------------------------------------------- */
+const S = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+const IC = {
+  // 顶栏：汉堡（左，打开播放列表）/ 竖排三点（右，打开更多）
+  menu: <svg viewBox="0 0 24 24" {...S}><path d="M4 7h16M4 12h16M4 17h10" /></svg>,
+  more: <svg viewBox="0 0 24 24" {...S}><circle cx="12" cy="5" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="12" cy="19" r="1.6" /></svg>,
+  // 封面内的音符
+  note: <svg viewBox="0 0 24 24" {...S}><path d="M9 18V6l10-2v12" /><circle cx="6" cy="18" r="3" /><circle cx="16" cy="16" r="3" /></svg>,
+  // 控制区五个按钮，顺序与设计稿一致：循环 / 上一首 / 播放 / 下一首 / 喜欢
+  repeat: <svg viewBox="0 0 24 24" {...S}><path d="M17 3l4 4-4 4" /><path d="M21 7H9a4 4 0 0 0-4 4" /><path d="M7 21l-4-4 4-4" /><path d="M3 17h12a4 4 0 0 0 4-4" /></svg>,
+  prev: <svg viewBox="0 0 24 24" {...S}><path d="M20 5v14l-9-7z" /><line x1="6" y1="5" x2="6" y2="19" /></svg>,
+  play: <svg viewBox="0 0 24 24" {...S}><path d="M8 5v14l11-7z" /></svg>,
+  pause: <svg viewBox="0 0 24 24" {...S}><line x1="9" y1="5" x2="9" y2="19" /><line x1="15" y1="5" x2="15" y2="19" /></svg>,
+  next: <svg viewBox="0 0 24 24" {...S}><path d="M4 5v14l9-7z" /><line x1="18" y1="5" x2="18" y2="19" /></svg>,
+  like: <svg viewBox="0 0 24 24" {...S}><path d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 11c0 5.5-7 10-7 10z" /></svg>,
+};
+
 export function FullScreenPlayer({
   sources,
   library,
@@ -44,6 +64,10 @@ export function FullScreenPlayer({
   const [showAuthor, setShowAuthor] = useState(false);
   const [showLandscape, setShowLandscape] = useState(false);
   const [showEq, setShowEq] = useState(false);
+  // 封面位切换成同尺寸歌词面板（设计稿 .lyrics，200×200 替换 .cover）
+  const [coverLyric, setCoverLyric] = useState(false);
+  // 整屏歌词（菜单入口）
+  const [showLyricFull, setShowLyricFull] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [speed, setSpeed] = useState(settings.playbackRate || 1);
   const [eqGains, setEqGainsLocal] = useState<number[]>(getEqGains());
@@ -62,7 +86,6 @@ export function FullScreenPlayer({
     setSleepMode(settings.sleepEnd ? 'end' : settings.sleepTimer > 0 ? (String(settings.sleepTimer) as SleepMode) : 'off');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.sleepTimer, settings.sleepEnd]);
-  const [lyricsOpen, setLyricsOpen] = useState(false);
 
   // 播放器内部浮层纳入系统返回手势栈：返回先关最上层浮层，再交由 MusicApp 退出播放页
   useEffect(() => {
@@ -70,23 +93,23 @@ export function FullScreenPlayer({
       if (showPlaylist) { setShowPlaylist(false); return true; }
       if (showAuthor) { setShowAuthor(false); return true; }
       if (showLandscape) { setShowLandscape(false); return true; }
+      if (showLyricFull) { setShowLyricFull(false); return true; }
+      if (coverLyric) { setCoverLyric(false); return true; }
       if (showMenu) {
         if (menuView !== 'main') { setMenuView('main'); return true; }
         setShowMenu(false); return true;
       }
       if (showEq) { setShowEq(false); return true; }
-      if (lyricsOpen) { setLyricsOpen(false); return true; }
       return false;
     };
     return () => { delete (window as any).__playerBack; };
-  }, [showPlaylist, showAuthor, showLandscape, showMenu, menuView, showEq, lyricsOpen]);
+  }, [showPlaylist, showAuthor, showLandscape, showMenu, menuView, showEq, coverLyric, showLyricFull]);
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const sleepTimer = useRef<number | undefined>(undefined);
 
   const it = state.current ?? ({ title: '未在播放', artist: '', album: '', id: '', sourceId: '', cover: undefined, lyric: [] } as any);
   const empty = !state.current;
   const fav = state.current ? library.isFavorite(it) : false;
-  const nowText = empty ? '未在播放' : '正在播放';
 
   // 歌词：优先用带时间轴的 LyricLine，其次降级的字符串数组
   const lyricLines: { time: number; text: string }[] = Array.isArray(it.lyric)
@@ -137,7 +160,7 @@ export function FullScreenPlayer({
     setDragIndex(null);
   };
 
-  // 更多菜单：6 个圆形图标网格项
+  // 更多菜单：圆形图标网格（4 列，54px 圆），对齐设计稿三点面板
   const MORE_ITEMS: { key: string; icon: any; label: string; onClick: () => void }[] = [
     { key: 'add', icon: 'plus', label: '加歌单', onClick: () => setMenuView('add') },
     { key: 'speed', icon: 'gauge', label: '倍速播放', onClick: () => setMenuView('speed') },
@@ -148,11 +171,23 @@ export function FullScreenPlayer({
       onClick: () => { player.setMode('list'); toast.push('已切换：列表循环'); setShowMenu(false); },
     },
     { key: 'less', icon: 'x-circle', label: '少推荐', onClick: () => { toast.push('已减少此类推荐'); setShowMenu(false); } },
+    { key: 'lyric', icon: 'music', label: '整屏歌词', onClick: () => { setShowMenu(false); setShowLyricFull(true); } },
     { key: 'land', icon: 'maximize', label: '横屏播放', onClick: () => { setShowMenu(false); setShowLandscape(true); } },
   ];
 
-  // 进度百分比（粉红填充轨道用）
+  // 进度百分比（粉红填充轨道 + 白色滑块）
   const pct = state.duration > 0 ? Math.min(100, (state.progress / state.duration) * 100) : 0;
+
+  // 进度条：点击 / 拖动 seek
+  const barRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const seekAt = (clientX: number) => {
+    const el = barRef.current;
+    if (!el || !state.duration) return;
+    const r = el.getBoundingClientRect();
+    const p = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+    player.seek(p * state.duration);
+  };
 
   // 作者主页：本列表内该艺术家的作品
   const artistTracks = state.queue.filter((q) => q.artist === it.artist);
@@ -173,81 +208,104 @@ export function FullScreenPlayer({
         }
       }}
     >
-      <style>{`
-        .fs-player .fs-progress{ display:flex; flex-direction:column; align-items:stretch; gap:8px; }
-        .fs-player .fs-progress input[type=range]{ -webkit-appearance:none; appearance:none; width:100%; height:4px; border-radius:2px; background:linear-gradient(to right, #ff5c8a var(--fill,0%), rgba(255,255,255,0.22) var(--fill,0%)); }
-        .fs-player .fs-progress input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:16px; height:16px; border-radius:50%; background:#fff; box-shadow:0 0 0 4px rgba(255,255,255,0.16), 0 2px 8px rgba(0,0,0,0.3); }
-        .fs-player .fs-progress input[type=range]::-moz-range-thumb{ width:16px; height:16px; border:none; border-radius:50%; background:#fff; }
-        .fs-player .fs-progress-time{ display:flex; align-items:center; justify-content:center; gap:8px; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
-        .fs-player .fs-ctrl .play.big{ background:#ff5c8a !important; box-shadow:0 8px 24px rgba(255,92,138,0.5) !important; color:#fff !important; }
-        .fs-player .fs-cover{ transition:box-shadow .3s; }
-      `}</style>
-      <div
-        className="fs-bg"
-        style={{
-          backgroundImage: it.cover ? `url(${it.cover})` : undefined,
-          backgroundColor: it.cover ? undefined : gradientFor(it.title),
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          filter: 'blur(40px) brightness(0.62)',
-          transform: 'scale(1.25)',
-        }}
-      />
-      {/* 仅一层很淡的压暗，保留封面泛出的彩色光晕（深色模式高亮） */}
-      <div className="fs-bg-mask" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.12)' }} />
-      <div className="fs-top">
-        <button className="icon" onClick={() => setShowPlaylist(true)} title="播放列表"><Icon name="menu" /></button>
-        <span className="fs-now">{nowText}</span>
-        <button className="icon" onClick={() => { setMenuView('main'); setShowMenu(true); }} title="更多"><Icon name="more-vertical" /></button>
-      </div>
+      {/* ===== 主界面：1:1 对齐设计稿 ⑤「未在播放」/ ⑥「播放中」===== */}
+      <div className="pv-player">
+        {/* 封面泛光（设计稿 .blur；有封面时优先用封面色） */}
+        <div
+          className="pv-blur"
+          style={
+            it.cover
+              ? { backgroundImage: `url(${it.cover})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.42 }
+              : undefined
+          }
+        />
 
-      <div className="fs-stage">
-        <div className="fs-disc-wrap" onClick={() => setLyricsOpen((v) => !v)} style={{ cursor: 'pointer' }}>
-          <div
-            className={'fs-cover' + (state.isPlaying ? ' playing' : '')}
-            style={{ borderRadius: 24, animation: 'none', boxShadow: '0 18px 48px rgba(0,0,0,0.5)', overflow: 'hidden', background: it.cover ? undefined : gradientFor(it.title) }}
-          >
-            {it.cover ? (
-              <img src={it.cover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        {/* 顶栏：汉堡 22px | 正 在 播 放 12px/字距2 | 竖三点 22px */}
+        <div className="pv-top">
+          <button className="pv-mi" onClick={() => setShowPlaylist(true)} title="播放列表" aria-label="播放列表">{IC.menu}</button>
+          <span className="pv-ttl">正 在 播 放</span>
+          <button className="pv-mi" onClick={() => { setMenuView('main'); setShowMenu(true); }} title="更多" aria-label="更多">{IC.more}</button>
+        </div>
+
+        {/* 封面位：200×200 r20，点击在「封面 / 歌词」间切换（设计稿 .cover / .lyrics 同尺寸同位） */}
+        {coverLyric ? (
+          <div className="pv-lyrics" onClick={() => setCoverLyric(false)}>
+            {lyricLines.length ? (
+              <>
+                {aLine > 0 && <span>{lyricLines[aLine - 1]?.text || '·'}</span>}
+                <span className="now">{lyricLines[aLine]?.text || '·'}</span>
+                {aLine + 1 < lyricLines.length && <span>{lyricLines[aLine + 1]?.text || '·'}</span>}
+              </>
             ) : (
-              <span className="fs-ph" style={{ width: '100%', height: '100%' }}>
-                <Icon name="music" size={64} />
-              </span>
+              <span className="now">暂无歌词</span>
             )}
           </div>
-        </div>
-
-        <div className="fs-meta">
-          <h1 className="fs-title">{it.title}</h1>
-          <div className="fs-artist">{it.artist ?? ''} {it.album ? '· 《' + it.album + '》' : ''}</div>
-        </div>
-
-        <div className="fs-ctrls">
-          <div className="fs-progress" style={{ '--fill': `${pct}%` } as any}>
-            <input
-              type="range"
-              min={0}
-              max={state.duration || 0}
-              value={state.progress}
-              disabled={empty}
-              onChange={(e) => player.seek(Number(e.target.value))}
-            />
-            <div className="fs-times">
-              <span className="t">{fmtTime(state.progress)}</span>
-              <span className="t">{fmtTime(state.duration)}</span>
-            </div>
+        ) : (
+          <div
+            className={'pv-cover' + (empty ? ' empty' : '')}
+            onClick={() => !empty && setCoverLyric(true)}
+            title={empty ? undefined : '查看歌词'}
+          >
+            {it.cover ? <img src={it.cover} alt="" /> : IC.note}
           </div>
+        )}
 
-          <div className="fs-btns">
-            <button className="fs-btn" disabled={empty} onClick={() => player.setMode(state.mode === 'list' ? 'one' : state.mode === 'one' ? 'shuffle' : 'list')} title="循环模式"><Icon name={MODE_ICON[state.mode].icon} /></button>
-            <button className="fs-btn" disabled={empty} onClick={() => player.prev()} title="上一首"><Icon name="skip-back" /></button>
-            <button
-              className="fs-btn play"
-              onClick={() => player.toggle()}
-              title={state.isPlaying ? '暂停' : '播放'}
-            ><Icon name={state.isPlaying ? 'pause' : 'play'} /></button>
-            <button className="fs-btn" disabled={empty} onClick={() => player.next()} title="下一首"><Icon name="skip-forward" /></button>
-            <button className={'fs-btn' + (fav ? ' fav' : '')} disabled={empty} onClick={() => library.toggleFavorite(it)} title="收藏"><Icon name={fav ? 'heart-filled' : 'heart'} /></button>
+        {/* 歌名 18px bold / 艺人 13px。空态：歌名「未在播放」，艺人位用「占位」撑住高度防止控制区跳动 */}
+        <div className="pv-title">{empty ? '未在播放' : it.title}</div>
+        <div className={'pv-artist' + (empty ? ' hold' : '')}>
+          {empty ? '占位' : [it.artist, it.album ? `《${it.album}》` : ''].filter(Boolean).join(' · ') || '未知艺术家'}
+        </div>
+
+        {/* 控制区贴底：进度条 4px + 时间 + 五个按钮（顺序/尺寸严格照设计稿） */}
+        <div className="pv-ctrls">
+          <div
+            className="pv-bar"
+            ref={barRef}
+            onPointerDown={(e) => {
+              if (empty || !state.duration) return;
+              dragging.current = true;
+              seekAt(e.clientX);
+              try { (e.target as any).setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
+            }}
+            onPointerMove={(e) => { if (dragging.current) seekAt(e.clientX); }}
+            onPointerUp={() => { dragging.current = false; }}
+            onPointerCancel={() => { dragging.current = false; }}
+          >
+            <i className={empty ? 'zero' : ''} style={{ width: `${pct}%` }} />
+            <span className={'pv-thumb' + (empty ? ' zero' : '')} style={{ left: `${pct}%` }} />
+          </div>
+          <div className="pv-times">
+            <span>{fmtTime(state.progress)}</span>
+            {/* 空态右侧为 -0:00（设计稿原样） */}
+            <span>{empty ? '-0:00' : fmtTime(state.duration)}</span>
+          </div>
+          <div className="pv-btns">
+            {empty ? (
+              /* 空态：设计稿用 <span> 而非 <button>，明示不可点击；播放键保留粉底作唯一主 CTA */
+              <>
+                <span className="pv-btn disabled">{IC.repeat}</span>
+                <span className="pv-btn disabled">{IC.prev}</span>
+                <span className="pv-btn play disabled">{IC.play}</span>
+                <span className="pv-btn disabled">{IC.next}</span>
+                <span className="pv-btn like disabled">{IC.like}</span>
+              </>
+            ) : (
+              <>
+                <button
+                  className="pv-btn"
+                  onClick={() => player.setMode(state.mode === 'list' ? 'one' : state.mode === 'one' ? 'shuffle' : 'list')}
+                  title="循环模式"
+                >{IC.repeat}</button>
+                <button className="pv-btn" onClick={() => player.prev()} title="上一首">{IC.prev}</button>
+                <button className="pv-btn play" onClick={() => player.toggle()} title={state.isPlaying ? '暂停' : '播放'}>
+                  {state.isPlaying ? IC.pause : IC.play}
+                </button>
+                <button className="pv-btn" onClick={() => player.next()} title="下一首">{IC.next}</button>
+                <button className={'pv-btn like' + (fav ? ' on' : '')} onClick={() => library.toggleFavorite(it)} title={fav ? '取消喜欢' : '喜欢'}>
+                  {IC.like}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -317,8 +375,9 @@ export function FullScreenPlayer({
         </div>
       )}
 
-      {lyricsOpen && (
-        <div className="fs-lyrics-full" onClick={() => setLyricsOpen(false)}>
+      {/* 整屏歌词（菜单「整屏歌词」入口） */}
+      {showLyricFull && (
+        <div className="fs-lyrics-full" onClick={() => setShowLyricFull(false)}>
           {lyricLines.length ? (
             lyricLines.map((l, i) => (
               <p key={i} className={'lyric-line' + (i === aLine ? ' active' : '')}>{l.text || '·'}</p>
