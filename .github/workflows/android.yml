@@ -290,7 +290,8 @@ jobs:
           fi
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > /tmp/keystore.p12
           SRC=$(find src-tauri/gen/android -name '*unsigned*.apk' | head -1)
-          OUT=src-tauri/gen/android/app/build/outputs/apk/universal/release/${{ github.event.repository.name }}-android.apk
+          # v2.3.10：签名产物带上版本号（lvyun-v2.3.10.apk），不再是固定的 lvyun-android.apk
+          OUT=src-tauri/gen/android/app/build/outputs/apk/universal/release/${{ github.event.repository.name }}-${RELEASE_TAG}.apk
           $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
             --ks /tmp/keystore.p12 \
             --ks-key-alias "$ANDROID_KEY_ALIAS" \
@@ -314,7 +315,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -x
-          APK="${SIGNED_APK:-$(find src-tauri/gen/android -name '*.apk' | head -1)}"
+          # 优先已签名产物；未配置 keystore 时退回未签名的
+          APK="${SIGNED_APK:-}"
+          if [ -z "$APK" ]; then
+            APK=$(find src-tauri/gen/android -name '*.apk' ! -name '*unsigned*' | head -1)
+          fi
+          if [ -z "$APK" ]; then
+            APK=$(find src-tauri/gen/android -name '*.apk' | head -1)
+          fi
           echo "Uploading APK: $APK"
           if [ -z "$APK" ]; then
             echo "No APK found under src-tauri/gen/android"
@@ -322,7 +330,15 @@ jobs:
             ls -R src-tauri/gen/android/app/build/outputs 2>/dev/null || true
             exit 1
           fi
+          # v2.3.10：统一重命名为「应用名-版本.apk」，保证下载到的文件名带版本号
+          OUT_NAME="${{ github.event.repository.name }}-${RELEASE_TAG}.apk"
+          if [ "$(basename "$APK")" != "$OUT_NAME" ]; then
+            cp "$APK" "/tmp/$OUT_NAME"
+            APK="/tmp/$OUT_NAME"
+          fi
           gh release upload "$RELEASE_TAG" "$APK" --clobber 2>&1 | tee /tmp/upload.log
+          # 清掉历史遗留的「不带版本号」资产，避免同一个 release 里挂着两个 APK 让人下错
+          gh release delete-asset "$RELEASE_TAG" "${{ github.event.repository.name }}-android.apk" --yes 2>/dev/null || true
 
       - name: "Debug: dump logs to issue"
         if: always() && (steps.init.outcome != 'success' || steps.build.outcome != 'success' || steps.upload.outcome != 'success')
