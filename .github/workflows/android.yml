@@ -83,6 +83,61 @@ jobs:
           set -o pipefail
           pnpm tauri android init 2>&1 | tee /tmp/init.log
 
+      - name: Patch release build to allow cleartext HTTP
+        # v2.4.4 #0b：release APK 默认禁止明文 HTTP，音乐源直链播不出来。
+        #
+        # Tauri 生成的 build.gradle.kts 里：
+        #     defaultConfig { manifestPlaceholders["usesCleartextTraffic"] = "false" }
+        #     debug  { manifestPlaceholders["usesCleartextTraffic"] = "true"  }
+        #     release { /* 未设置 → 继承 defaultConfig 的 false */ }
+        # 而我们发布 APK 走的正是 release 构建，于是
+        # AndroidManifest.xml 的 android:usesCleartextTraffic="${usesCleartextTraffic}" 被解析成 false。
+        #
+        # 后果：大量音乐蜘蛛返回的播放地址是 http:// 明文 CDN 直链
+        # （实测 aiapi.vip 酷狗源返回 http://43.140.245.243:1080/ppp.php?...），
+        # 系统直接拦截 → 表现与「没有 <audio> 元素」一样：点了没声音、也不报错。
+        # 因此第 0 项（补回 audio 宿主）修完之后必须连这里一起放开，否则依然播放不了。
+        run: |
+          GRADLE="src-tauri/gen/android/app/build.gradle.kts"
+          if [ ! -f "$GRADLE" ]; then
+            GRADLE=$(find src-tauri/gen/android -name "build.gradle.kts" -path "*/app/*" 2>/dev/null | head -1)
+          fi
+          if [ -z "$GRADLE" ]; then
+            echo "::warning::No app build.gradle.kts found, skipping cleartext patch"
+            exit 0
+          fi
+          python3 - "$GRADLE" << 'PYEOF'
+          import re, sys
+          path = sys.argv[1]
+          src = open(path, encoding="utf-8").read()
+
+          # 幂等：release 块里已经有这行就跳过
+          rel = re.search(r'getByName\("release"\)\s*\{', src)
+          if not rel:
+              print("::warning::release buildType not found, skip cleartext patch")
+              sys.exit(0)
+          # 取 release 块内容做局部判断（避免被 debug/defaultConfig 的同名行误判）
+          depth = 0
+          start = src.index("{", rel.start())
+          i = start
+          while i < len(src):
+              if src[i] == "{": depth += 1
+              elif src[i] == "}":
+                  depth -= 1
+                  if depth == 0: break
+              i += 1
+          block = src[start:i + 1]
+          if "usesCleartextTraffic" in block:
+              print("build.gradle.kts release already allows cleartext, skip")
+              sys.exit(0)
+
+          insert_at = start + 1
+          line = '\n            manifestPlaceholders["usesCleartextTraffic"] = "true"'
+          src = src[:insert_at] + line + src[insert_at:]
+          open(path, "w", encoding="utf-8").write(src)
+          print("Patched " + path + ': release buildType now usesCleartextTraffic=true')
+          PYEOF
+
       - name: Patch MainActivity (Android back-button → WebView)
         run: |
           MAIN="src-tauri/gen/android/app/src/main/java/com/lvyun/app/MainActivity.kt"

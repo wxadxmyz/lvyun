@@ -8,6 +8,9 @@ import { useSettings } from '../lib/settings';
 import { SearchView } from '../components/SearchView';
 import { DebugPanel } from '../components/DebugPanel';
 import { FullScreenPlayer } from './FullScreenPlayer';
+// v2.4.4 #0：全局音频宿主 —— 全项目唯一的 <audio> 元素持有者与播放执行者。
+// 挂在 .app 顶层、<main> 之外，不随 Tab 切换或播放页开关而卸载。
+import { AudioHost } from './AudioHost';
 import { DesktopLyric } from './DesktopLyric';
 import { Discover } from './views/Discover';
 import { LocalMusicView } from './views/LocalMusicView';
@@ -273,6 +276,10 @@ export default function MusicApp() {
       {tab === 'player' && (
         <FullScreenPlayer sources={store.sources} library={library} onClose={() => setTab(fromTab)} />
       )}
+
+      {/* v2.4.4 #0：音频宿主必须常驻（早于 bottom-nav、晚于 main）。
+          放在这里保证任何 Tab 下 MusicApp 都在渲染它，切页面不会断音。 */}
+      <AudioHost sources={store.sources} library={library} />
 
       <nav className="bottom-nav">
         {(['home', 'player', 'settings'] as const).map((id) => (
