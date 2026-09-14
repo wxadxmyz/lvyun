@@ -32,9 +32,20 @@ function readBg(): string {
 function push(): boolean {
   try {
     const bridge = (window as any).LvYunAndroid;
-    if (!bridge || typeof bridge.setNavBarColor !== 'function') return false;
-    bridge.setNavBarColor(readBg(), false);
-    return true;
+    if (!bridge) return false;
+    const bg = readBg();
+    // v2.4.5 #12：播放页「通知栏 → 手势栏一色」。
+    // 旧实现只调 setNavBarColor —— 顶部状态栏从来没被染过，视觉必然割裂。
+    // 优先用一次 setBarsColor 同时设两根条（避免两次 IPC、两帧不同色）；
+    // 老版本桥没有这个方法时，退回分别调用，再退回只染导航栏。
+    if (typeof bridge.setBarsColor === 'function') {
+      bridge.setBarsColor(bg, false);
+      return true;
+    }
+    let ok = false;
+    if (typeof bridge.setNavBarColor === 'function') { bridge.setNavBarColor(bg, false); ok = true; }
+    if (typeof bridge.setStatusBarColor === 'function') { bridge.setStatusBarColor(bg, false); ok = true; }
+    return ok;
   } catch {
     return false;
   }

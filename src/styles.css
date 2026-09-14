@@ -1161,3 +1161,18 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .dl-row .dl-st{ flex:none; font-size:12px; color:var(--muted); }
 .dl-row .dl-st.done{ color:#23c08b; }
 .dl-row .dl-st.error{ color:var(--accent); }
+
+/* #12：播放页整屏一色 —— 顶部状态栏已由原生桥 setBarsColor 染色（见 navBar.ts），
+   这里补齐 Web 侧：播放页根层吃 --bg，底部 tab 去掉分隔线与阴影（割裂感的来源）。 */
+.pv-root{ background:var(--bg); }
+.pv-root ~ .bottom-nav{ background:var(--bg); border-top-color:transparent; box-shadow:none; }
+
+/* #13（原 v2.5.0 #4）：修横屏假横屏。
+   .fs-land 原为 position:absolute + inset:0，量到的是**旋转前**的竖屏尺寸，
+   于是横屏后左侧一大片空白、右侧内容被压成窄条。改为 fixed + 视口单位。 */
+.fs-land{ position:fixed !important; inset:0; width:100vw; height:100dvh; max-height:100dvh; }
+
+/* #15（原 v2.5.0 #7）：播放页顶栏配色加深。
+   旧值 .pv-top:#dcdce2 是写死浅灰，.pv-ttl 又叠一层 muted —— 两层浅色叠加导致看不清。 */
+.pv-top{ color:var(--text); }
+.pv-ttl{ color:var(--text); opacity:.72; }

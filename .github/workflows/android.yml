@@ -284,6 +284,22 @@ jobs:
               }
               var _lvNavColor: Int? = null
               var _lvNavLight: Boolean = false
+              // ===== v2.4.5 #12：状态栏同色（播放页「通知栏到手势栏一色」）=====
+              var _lvStatusColor: Int? = null
+              var _lvStatusLight: Boolean = false
+              fun _lvApplyStatusBar() {
+                  val c = _lvStatusColor ?: return
+                  try {
+                      window.statusBarColor = c
+                      if (android.os.Build.VERSION.SDK_INT >= 23) {
+                          val decor = window.decorView
+                          val flag = android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                          decor.systemUiVisibility =
+                              if (_lvStatusLight) decor.systemUiVisibility or flag
+                              else decor.systemUiVisibility and flag.inv()
+                      }
+                  } catch (e: Exception) { /* ignore */ }
+              }
               fun _lvApplyNavBar() {
                   val c = _lvNavColor ?: return
                   try {
@@ -323,6 +339,26 @@ jobs:
                               _lvNavColor = android.graphics.Color.parseColor(color)
                               _lvNavLight = lightBars
                               _lvApplyNavBar()
+                          } catch (e: Exception) { /* ignore */ }
+                      }
+                  }
+                  @android.webkit.JavascriptInterface
+                  fun setStatusBarColor(color: String, lightIcons: Boolean) {
+                      runOnUiThread {
+                          try {
+                              _lvStatusColor = android.graphics.Color.parseColor(color)
+                              _lvStatusLight = lightIcons
+                              _lvApplyStatusBar()
+                          } catch (e: Exception) { /* ignore */ }
+                      }
+                  }
+                  @android.webkit.JavascriptInterface
+                  fun setBarsColor(color: String, lightIcons: Boolean) {
+                      runOnUiThread {
+                          try {
+                              val c = android.graphics.Color.parseColor(color)
+                              _lvNavColor = c; _lvNavLight = lightIcons; _lvApplyNavBar()
+                              _lvStatusColor = c; _lvStatusLight = lightIcons; _lvApplyStatusBar()
                           } catch (e: Exception) { /* ignore */ }
                       }
                   }

@@ -664,7 +664,7 @@ export function FullScreenPlayer({
             className="fs-land-back"
             onClick={(e) => { e.stopPropagation(); setShowLandscape(false); }}
             aria-label="退出横屏"
-          ><Icon name="arrow-left" /></button>
+          ><Icon name="arrow-left" size={24} /></button>
           <div className="fs-land-bg">
             <div className="fs-land-orb a" />
             <div className="fs-land-orb b" />

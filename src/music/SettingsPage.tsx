@@ -86,6 +86,7 @@ export function SettingsPage({
   const [checking, setChecking] = useState(false);
   const [appVersion, setAppVersion] = useState(FALLBACK_VERSION);
   const [cacheMsg, setCacheMsg] = useState('');
+  const [cacheSize, setCacheSize] = useState(0);
   const dls = useDownloads();
   // 显示 Tauri 打包时的真实版本（tauri.conf.json 的 version），不再写死
   useEffect(() => {
@@ -94,22 +95,49 @@ export function SettingsPage({
       .catch(() => { /* 非 Tauri 环境（浏览器调试）保留回退值 */ });
   }, []);
 
-  // v2.4.5 #8：清除本地缓存（搜索记录 / 榜单缓存 / 播放历史 / 各类视图缓存），
-  // 但**必须保留音源配置**（mps_sources_*）—— 那是用户手动添加进去的资产，
-  // 清掉等于把整个 App 的片源全删了。
+  // v2.4.5 #14（原 v2.5.0 #6）：清除缓存 —— 对齐幕海，但**必须保留音源**。
+  // KEEP 清单：mps_sources_*（音源，用户明确要求保留）、mps_settings（设置）、
+  // mps_skin*（皮肤选择）。这些是「数据 / 配置」，不是缓存。
+  const KEEP = /^(mps_sources_|mps_settings$|mps_skin)/;
+  const calcSize = () => {
+    let n = 0;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && !KEEP.test(k)) n += (localStorage.getItem(k)?.length ?? 0) + k.length;
+      }
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i);
+        if (k) n += (sessionStorage.getItem(k)?.length ?? 0) + k.length;
+      }
+    } catch { /* ignore */ }
+    return n * 2; // localStorage 以 UTF-16 计，粗略折算字节
+  };
+  const fmtSize = (b: number) =>
+    b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : b >= 1024 ? Math.round(b / 1024) + ' KB' : b + ' B';
+
+  useEffect(() => { setCacheSize(calcSize()); }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   const clearCache = () => {
     try {
-      const keep = /^mps_sources_/;
       const keys: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && !keep.test(k)) keys.push(k);
+        if (k && !KEEP.test(k)) keys.push(k);
       }
-      if (!keys.length) { setCacheMsg('无缓存'); return; }
-      if (!window.confirm(`将清除 ${keys.length} 项缓存（音源配置会保留），确定继续吗？`)) return;
+      const size = calcSize();
+      if (!keys.length && size === 0) { setCacheMsg('无缓存'); return; }
+      if (!window.confirm(`将清除约 ${fmtSize(size)} 缓存（音源、设置与皮肤会保留），确定继续吗？`)) return;
       keys.forEach((k) => localStorage.removeItem(k));
-      setCacheMsg(`已清 ${keys.length} 项`);
-      window.alert(`已清除 ${keys.length} 项缓存，音源已保留。`);
+      try {
+        sessionStorage.clear();
+        // 律云目前未用 IndexedDB，保留调用作防御（与幕海一致）
+        (indexedDB as any).databases?.().then((dbs: any[]) => dbs.forEach((d: any) => d.name && indexedDB.deleteDatabase(d.name)));
+      } catch { /* ignore */ }
+      setCacheSize(calcSize());
+      setCacheMsg('已清除');
+      window.alert(`已清除 ${keys.length} 项缓存，音源与设置均已保留。`);
     } catch (e) {
       window.alert('清除失败：' + String(e));
     }
@@ -209,7 +237,7 @@ export function SettingsPage({
           <NavRow icon="file-text" label="关于" onClick={() => setSub('about')} />
           {/* v2.4.5 #8：清除缓存。注意必须保留 mps_sources_* —— 那是用户自己添加的音源，
               一并清掉等于把音源全删了（用户明确要求保留）。 */}
-          <NavRow icon="trash" label="清除缓存" value={cacheMsg || '保留音源'} onClick={clearCache} />
+          <NavRow icon="trash" label="清除缓存" value={cacheMsg || fmtSize(cacheSize)} onClick={clearCache} />
         </div>
       </div>
 

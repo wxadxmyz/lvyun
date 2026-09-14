@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLibrary } from '../../lib/library';
 import { usePlayback } from '../../lib/playback';
 import { SourceConfig } from '../../engine/types';
@@ -34,18 +34,24 @@ export function Discover({
   // v2.4.1 #F：抽成独立函数，供「首次挂载 / 源变化 / 手动刷新」三处复用。
   // force=true 时跳过 12h 缓存直连网络（手动刷新用）。
   const loadToplists = useCallback((force = false) => {
+    // v2.4.5 #11：force 请求也给可见加载态（此前只有手动刷新按钮转圈，
+    // 源变化触发的刷新是完全静默的 —— 用户以为「主页没刷新」）。
+    if (force) setRefreshing(true);
     // 拉取失败一律返回 null，主页静默不渲染榜单区（不影响原有首页）
     return fetchToplists(force)
       .then((d) => setToplists(d?.toplists ?? null))
-      .catch(() => setToplists(null));
+      .catch(() => setToplists(null))
+      .finally(() => { if (force) setRefreshing(false); });
   }, []);
 
-  // 依赖 sources.length：新增/删除源后回主页即重新加载。
-  // 此前依赖数组为空，只在挂载时拉一次，用户新增源后看不到任何变化。
-  // 注意 fetchToplists() 默认走 12h 缓存，这里不强制 —— 日常切页不该反复打网络；
-  // 需要「真的拉最新」时用手动刷新按钮（force=true）。
+  // v2.4.5 #11（原 v2.5.0 #2）：加 / 删源时强制绕过 12h 榜单缓存。
+  // 旧逻辑依赖 sources.length 会重跑 effect，但走的是缓存分支 —— 拿回完全相同的旧数据，
+  // 页面零变化，用户只能「杀进程重开」才看到新榜。现在：源数量真的变了 → force。
+  const lastSrcCount = useRef<number>(sources.length);
   useEffect(() => {
-    void loadToplists();
+    const changed = lastSrcCount.current !== sources.length;
+    lastSrcCount.current = sources.length;
+    void loadToplists(changed);
   }, [loadToplists, sources.length]);
 
   const onRefresh = useCallback(() => {
