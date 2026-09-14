@@ -19,7 +19,8 @@
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use md5::{Digest, Md5};
-use rquickjs::{Context, Function, Object, Rest, Runtime};
+use rquickjs::function::Rest;
+use rquickjs::{Context, Function, Object, Runtime};
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 
