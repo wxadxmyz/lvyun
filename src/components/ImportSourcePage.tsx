@@ -46,6 +46,11 @@ export function ImportSourcePage({
         msg += '（含影视源：音乐搜索不会返回，建议在幕海中使用）';
       }
       setStatus({ type: 'ok', msg });
+      // v2.4.1 #E：导入成功后清空输入框。此前只 setStatus，残留的地址/粘贴内容
+      // 会让用户误以为「还没导入成功」，也容易重复提交同一份内容。
+      // 只清成功分支 —— 失败时保留原文便于修改重试。
+      setUrl('');
+      setPaste('');
       onImported?.();
     } else {
       setStatus({ type: 'err', msg: r.errors.join('；') || '导入失败' });

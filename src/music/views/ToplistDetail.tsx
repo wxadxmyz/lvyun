@@ -5,6 +5,8 @@ import { usePlayback } from '../../lib/playback';
 import { Icon } from '../../components/Icon';
 import { pushBackHandler } from '../../lib/backStack';
 import { ToplistItem } from '../../lib/toplists';
+// v2.4.1 #I：榜单结果同样标记源指纹，保证换源后播放能走新源
+import { markSourceRev } from '../../player';
 
 export function ToplistDetail({
   item,
@@ -29,7 +31,7 @@ export function ToplistDetail({
     setLoading(true);
     setSearched(false);
     aggregateSearch(sources, item.keyword)
-      .then((r) => { if (alive) setItems(r.items.filter((i) => i.mediaType === 'music')); })
+      .then((r) => { if (alive) setItems(r.items.filter((i) => i.mediaType === 'music').map((it) => markSourceRev(it, sources))); })
       .catch(() => { if (alive) setItems([]); })
       .finally(() => { if (alive) { setLoading(false); setSearched(true); } });
     return () => { alive = false; };

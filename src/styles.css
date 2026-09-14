@@ -15,6 +15,17 @@
   --sar: env(safe-area-inset-right, 0px);
   --tabbar: 50px; /* 底部 Tab 栏主体高度（不含手势条安全区），v2.3.9 由 56px 收紧 */
 }
+/* v2.4.1 #C：对齐慕海 styles.css:20-27 的「双段兜底」写法。
+   支持 max() 的设备（现代 Chrome / iOS Safari）升级为「取较大值」，
+   这样刘海屏 / 挖孔屏上 env() 真实值大于兜底 26px 时不会被截断；
+   不支持 max() 的卓易通 / 鸿蒙 WebView 会跳过整块，继续用上面的 env(..., 26px)。
+   慕海注释特别指出：直接写 max(env(...), 26px) 在这些 WebView 上会让整条声明被判无效，
+   反而导致 --sat 未定义、所有 var(--sat) 失效（卡片上滑盖到通知栏），故必须分段。 */
+@supports (top: max(1px, 2px)) {
+  :root {
+    --sat: max(env(safe-area-inset-top, 0px), 26px);
+  }
+}
 /* 每套皮肤的 --bg/--panel/--accent 等由 theme.tsx 写到 documentElement；
    .music-theme / .video-theme 仅控制布局方向，不覆盖主色，保证皮肤色全局生效 */
 .music-theme { flex-direction: row; }
@@ -507,10 +518,17 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
      z-index 层级：.app::before(55) < .pv-root(60) < bottom-nav(70)，
      即顶部遮挡条不再压住播放器，底部 Tab 仍浮在其上保持可点。 */
   .main.player-open { display: none; }
+  /* v2.4.1 #C：顶部安全区改为「单一入口」。此前 .pv-root 吃一次 var(--sat)、
+     .pv-player 再叠 6px，而 --sat 的兜底值 26px 是绝对高度——沉浸式下状态栏浮在
+     内容上并不占布局空间，兜底生效就等于把状态栏高度留了两遍，
+     导致「汉堡 / 未在播放 / 竖三点」与通知栏之间空出一大截（约为慕海的两倍）。
+     对齐慕海做法：播放页只留一层安全区，故这里不再承担。 */
   .pv-root { position: fixed; inset: 0; z-index: 60; background: var(--bg);
-    padding: var(--sat, 0px) 0 0; }
-  /* 顶部安全区已由 .pv-root 承担，这里只在贴边处留一点余量，底部给 Tab 与手势条让位 */
-  .pv-player { padding: 6px 20px calc(var(--tabbar) + var(--sab) + 6px); }
+    padding: 0; }
+  /* 顶部安全区统一由本层承担（用 var(--sat) 而非直接写 env()，
+     这样 safeArea.ts 的 JS 兜底与 @supports 的 max() 升级都能自动生效）；
+     底部给 Tab 与手势条让位。 */
+  .pv-player { padding: calc(6px + var(--sat, 26px)) 20px calc(var(--tabbar) + var(--sab) + 6px); }
 
   /* 底部 Tab 导航 */
   .bottom-nav {
@@ -586,6 +604,10 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
   display:flex;align-items:center;justify-content:center;color:var(--text);}
 .ht-ico svg{width:27px;height:27px;} /* 顶部搜索/历史图标放大 */
 .ht-ico:active{transform:scale(.96);}
+/* v2.4.1 #F：刷新按钮的忙碌反馈（旋转） */
+.ht-ico.spinning{opacity:.6;pointer-events:none;}
+.ht-ico.spinning svg{animation:ht-spin 900ms linear infinite;}
+@keyframes ht-spin{to{transform:rotate(360deg);}}
 
 .import-fab{margin-top:18px;height:48px;padding:0 22px;border:none;border-radius:24px;
   background:var(--accent);color:#fff;font-size:15px;font-weight:600;
@@ -817,7 +839,12 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .fs-pl-foot{padding:12px 16px calc(12px + var(--sab));color:var(--muted);font-size:12px;text-align:center;border-top:1px solid var(--border);}
 
 /* ============ 三点菜单 / 子面板（底部弹出 sheet）============ */
-.fs-menu-mask{position:absolute;inset:0;z-index:8;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;animation:fade .15s;}
+/* v2.4.1 #D：改为 fixed + z-index:75（介于底部导航 70 与弹窗 80 之间）。
+   此前是 position:absolute; z-index:8，相对 .pv-root(60) 定位，
+   而 .bottom-nav(70) 在 .pv-root 之外 —— 父容器整体在 Tab 之下，
+   内部 z-index 再大也无效，导致 3 点菜单最后几行被 Tab 切掉。
+   JSX 已把该节点移到 .pv-root 之外（Fragment 同级），配合此处 fixed 即可覆盖 Tab。 */
+.fs-menu-mask{position:fixed;inset:0;z-index:75;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;animation:fade .15s;}
 .fs-sheet{width:100%;background:var(--panel);border-radius:18px 18px 0 0;padding:10px 12px calc(14px + var(--sab));max-height:84%;overflow:auto;animation:pop .16s ease;}
 .fs-sheet-head{display:flex;align-items:center;gap:10px;padding:8px 6px 12px;border-bottom:1px solid var(--border);margin-bottom:6px;}
 .fs-sheet-head .sh-title{font-size:16px;font-weight:700;flex:1;}

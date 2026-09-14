@@ -33,6 +33,14 @@ function normalize(arr: any[]): any[] {
       const o = { ...r };
       // 部分订阅源用 api 字段代替 baseUrl
       if (!o.baseUrl && o.api) o.baseUrl = o.api;
+      // v2.4.1 #G：把外部工具导出的 `code` 字段归一化为 `spider`。
+      // 引擎侧 loadCode() 只认 spider / spiderUrl / api 三者（见 engine/adapters/js.ts），
+      // 而社区工具导出的 js 源普遍用 `code` 承载内联脚本 —— 不归一化就会在
+      // 搜索时抛「JS 源缺少 spider 脚本」。在此统一映射，引擎层无需感知。
+      // 仅在 spider 为空时映射，避免覆盖已正确填写的配置。
+      if (o.type === 'js' && !o.spider && typeof o.code === 'string' && o.code.trim()) {
+        o.spider = o.code;
+      }
       return o;
     })
     .filter((r) => r.type && r.baseUrl);

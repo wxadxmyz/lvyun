@@ -55,7 +55,14 @@ export async function aggregateSearch(
         const items = await withTimeout(createSource(s).search(keyword, 1), timeout);
         return { ok: true as const, sourceId: s.id, items };
       } catch (e: any) {
-        return { ok: false as const, sourceId: s.id, message: e?.message ?? '搜索失败' };
+        // v2.4.1 #B：错误信息兜底链。此前只取 e?.message，遇到以下情况会退化成
+        // 无信息的「搜索失败」，让用户与调试者都无从下手：
+        //   1) Rust 侧 Err(String) 经 invoke 抛出的不是标准 Error 实例；
+        //   2) QuickJS 异常对象经序列化后 message 丢失；
+        //   3) 抛出的本就是字符串。
+        // 逐级降级取值，保证「真实原因可见」——这是 A1-F3 把 message 渲染到 UI 的前提。
+        const msg = e?.message || e?.toString?.() || String(e) || '未知错误';
+        return { ok: false as const, sourceId: s.id, message: msg };
       }
     })
   );

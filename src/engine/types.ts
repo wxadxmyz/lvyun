@@ -27,6 +27,9 @@ export interface JsSourceConfig extends SourceConfig {
   api?: string;
   spider?: string;
   spiderUrl?: string;
+  // v2.4.1 #G：外部工具导出的内联脚本字段，导入时由 sourceFetch.normalize
+  // 归一化为 spider；此处声明是为了让引擎层在「未经导入路径直接构造」时也能兜底识别。
+  code?: string;
   // TVBox csp 模型：站点代号与 ext 配置（JSON 字符串），传给 spider 构造器选路
   ext?: string;
 }

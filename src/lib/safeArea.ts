@@ -7,7 +7,10 @@
 // 做法：只有当 env() 确实没给出值时才注入兜底（真机返回真实 inset 时不覆盖），
 // 让 .fs-top 已有的 padding: calc(4px + var(--sat)) 生效，把内容从通知栏热区推下来。
 
-const SAT_FALLBACK = 24; // 安卓状态栏常见高度（px），足够避开通知栏下拉手势区
+// v2.4.1 #C：与 styles.css 的 --sat 兜底口径统一。
+// 此前这里写 24、CSS 兜底写 26，两处不一致 —— 若 env() 上报 0，
+// JS 兜底注入 24px 会覆盖 CSS 的 26px，实际留白比预期少 2px。
+const SAT_FALLBACK = 26; // 与 CSS 保持一致的安卓状态栏兜底高度（px）
 
 function readPx(name: string): number {
   const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();

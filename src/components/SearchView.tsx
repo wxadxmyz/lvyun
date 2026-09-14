@@ -5,6 +5,8 @@ import { downloadStore } from '../lib/downloads';
 import { Icon } from './Icon';
 // v2.3.11 #4：返回键栈式调度
 import { pushBackHandler } from '../lib/backStack';
+// v2.4.1 #I：搜索结果标记源配置指纹，供换源后判断旧直链是否仍可信
+import { markSourceRev } from '../player';
 
 export function SearchView({
   sources,
@@ -42,8 +44,15 @@ export function SearchView({
     setLoading(true);
     setSearched(true);
     library.addSearch(query);
-    const r = await aggregateSearch(sources, query, { timeout: 8000, mediaType });
-    setItems(r.items);
+    // v2.4.1 #A：不再硬编码 timeout。此前写死 8000，会让 aggregateSearch 里
+    // `opts.timeout ?? TIMEOUT_BY_TYPE[s.type]` 的按类型分层永远走不到——
+    // JS/TVBox 源本该拿 25s（高于 Rust 侧 reqwest 20s），实际只有 8s，
+    // 叠加 QuickJS 沙箱初始化 + 每次 fetch 新建 reqwest 客户端 + TLS 握手后
+    // 频频超时，表现为「部分源失败：xxx（搜索失败）」。交由分层超时决定。
+    const r = await aggregateSearch(sources, query, { mediaType });
+    // v2.4.1 #I：给每条结果盖上「产生时的源配置指纹」。
+    // 之后播放时会比对指纹 —— 若期间换过源，则旧直链不再可信，强制用新源重新解析。
+    setItems(r.items.map((it) => markSourceRev(it, sources)));
     setErrors(r.errors);
     setLoading(false);
   };

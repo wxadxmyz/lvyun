@@ -42,6 +42,8 @@ const P: Record<string, ReactNode> = {
   'fast-forward': <><path d="M4 5l8 7-8 7z" fill="currentColor" /><path d="M13 5l8 7-8 7z" fill="currentColor" /></>,
   pip: <><rect x="3" y="4" width="18" height="16" rx="2.5" /><rect x="12" y="11" width="8" height="6" rx="1" fill="currentColor" stroke="none" /></>,
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+  // v2.4.1 #F：榜单刷新按钮
+  refresh: <><path d="M21 12a9 9 0 1 1-3-6.7" /><path d="M21 3v6h-6" /></>,
   sliders: <><path d="M4 7h10M18 7h2M4 12h2M10 12h10M4 17h7M15 17h5" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="12" r="2" /><circle cx="13" cy="17" r="2" /></>,
   // 填充型（播放/暂停/上一首/下一首）：在小圆按钮里更醒目
   play: <path d="M7 4.5v15l13-7.5z" fill="currentColor" />,

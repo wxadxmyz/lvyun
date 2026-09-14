@@ -220,11 +220,18 @@ export function FullScreenPlayer({
   const artistTracks = state.queue.filter((q) => q.artist === it.artist);
 
   return (
-    // v2.3.11 #1：根节点由 .fs-player 改为 .pv-root。
-    // 播放页在 MusicApp 里已移出 <main>，不再继承 .main 的移动端三边内边距，
-    // 这里上下各自处理安全区、左右到边，真正「占满屏幕」（旧实现被 .main 的内边距夹住，四周留白）。
-    <div
-      className="pv-root"
+    // v2.4.1 #D：外层改用 Fragment，让「3 点菜单」能挂在 .pv-root 之外。
+    // 原因：.pv-root 是 z-index:60 的层叠上下文，而底部导航 .bottom-nav 是 z-index:70
+    // 且位于 .pv-root 之外 —— 父容器整体在 Tab 之下，内部子元素无论 z-index 多大
+    // 都会被 Tab 盖住（3 点菜单贴底弹出，最后几行正好落在 Tab 区域，被切掉一半）。
+    // 另：.pv-player 内的 .pv-blur 带 filter:blur(40px)，filter 会创建新的层叠上下文，
+    // 使子元素的 position:fixed 失效 —— 所以菜单必须提到 .pv-root 同级才稳。
+    <>
+      {/* v2.3.11 #1：根节点由 .fs-player 改为 .pv-root。
+          播放页在 MusicApp 里已移出 <main>，不再继承 .main 的移动端三边内边距，
+          这里上下各自处理安全区、左右到边，真正「占满屏幕」（旧实现被 .main 的内边距夹住，四周留白）。 */}
+      <div
+        className="pv-root"
       onTouchStart={(e) => { swipeStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
       onTouchEnd={(e) => {
         if (!swipeStart.current) return;
@@ -545,6 +552,11 @@ export function FullScreenPlayer({
         </div>
       )}
 
+    </div>
+
+      {/* v2.4.1 #D：3 点菜单挂在 .pv-root 之外（Fragment 同级）。
+          这样它的层叠上下文不再受 .pv-root(z-index:60) 约束，
+          得以浮在底部导航 .bottom-nav(z-index:70) 之上，最后几行不被 Tab 切掉。 */}
       {showMenu && (
         <div className="fs-menu-mask" onClick={() => { setShowMenu(false); setMenuView('main'); }}>
           <div className="fs-sheet" onClick={(e) => e.stopPropagation()}>
@@ -622,6 +634,6 @@ export function FullScreenPlayer({
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

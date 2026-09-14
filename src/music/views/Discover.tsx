@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useLibrary } from '../../lib/library';
 import { usePlayback } from '../../lib/playback';
 import { SourceConfig } from '../../engine/types';
@@ -29,10 +29,29 @@ export function Discover({
   const [toplists, setToplists] = useState<ToplistItem[] | null>(null);
   const [active, setActive] = useState<ToplistItem | null>(null);
 
-  useEffect(() => {
+  const [refreshing, setRefreshing] = useState(false);
+
+  // v2.4.1 #F：抽成独立函数，供「首次挂载 / 源变化 / 手动刷新」三处复用。
+  // force=true 时跳过 12h 缓存直连网络（手动刷新用）。
+  const loadToplists = useCallback((force = false) => {
     // 拉取失败一律返回 null，主页静默不渲染榜单区（不影响原有首页）
-    fetchToplists().then((d) => setToplists(d?.toplists ?? null)).catch(() => setToplists(null));
+    return fetchToplists(force)
+      .then((d) => setToplists(d?.toplists ?? null))
+      .catch(() => setToplists(null));
   }, []);
+
+  // 依赖 sources.length：新增/删除源后回主页即重新加载。
+  // 此前依赖数组为空，只在挂载时拉一次，用户新增源后看不到任何变化。
+  // 注意 fetchToplists() 默认走 12h 缓存，这里不强制 —— 日常切页不该反复打网络；
+  // 需要「真的拉最新」时用手动刷新按钮（force=true）。
+  useEffect(() => {
+    void loadToplists();
+  }, [loadToplists, sources.length]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    void loadToplists(true).finally(() => setRefreshing(false));
+  }, [loadToplists]);
 
   const homeTop = (
     <div className="home-top">
@@ -40,6 +59,16 @@ export function Discover({
       <div className="ht-actions">
         <button className="ht-ico" onClick={onOpenLocal} title="本地音乐"><Icon name="folder" size={22} /></button>
         <button className="ht-ico" onClick={() => onSearch('')} title="搜索"><Icon name="search" size={22} /></button>
+        {/* v2.4.1 #F：手动刷新榜单（force 绕过 12h 缓存，真去网络拉最新） */}
+        <button
+          className={'ht-ico' + (refreshing ? ' spinning' : '')}
+          onClick={onRefresh}
+          disabled={refreshing}
+          title="刷新榜单"
+          aria-label="刷新榜单"
+        >
+          <Icon name="refresh" size={22} />
+        </button>
         <button className="ht-ico" onClick={onOpenHistory} title="历史"><Icon name="clock" size={22} /></button>
         <button className="ht-ico" onClick={onOpenDebug} title="调试"><Icon name="bug" size={22} /></button>
       </div>
