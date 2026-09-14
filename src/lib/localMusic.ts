@@ -3,7 +3,7 @@ import { readDir } from '@tauri-apps/plugin-fs';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { homeDir } from '@tauri-apps/api/path';
 import { MediaItem } from '../engine/types';
-import { readTagsBatch } from './id3';
+import { readTagsBatch, getCoverId } from './id3';
 
 // 本地音乐：让用户手动选择文件夹（权限少、可控），递归扫描常见音频格式，
 // 通过 Tauri 的 convertFileSrc 转为 WebView 可直接播放的 asset 地址。
@@ -99,10 +99,13 @@ export async function toMediaItemsWithTags(
   startIndex = 0,
   onTick?: (done: number, total: number) => void,
 ): Promise<{ items: MediaItem[]; tagged: number }> {
-  const tags = await readTagsBatch(files, onTick);
+  // v2.4.0 #D1：封面文件名与曲库项 id 同源，保证「移除时按 id 精确反查删除封面」
+  const coverIds = files.map((f, i) => getCoverId('local-' + (startIndex + i) + '-' + f.path));
+  const results = await readTagsBatch(files, onTick, coverIds);
   let tagged = 0;
   const items: MediaItem[] = files.map((f, i) => {
-    const t = tags[i] ?? {};
+    const r = results[i] ?? { tags: {} as any };
+    const t = r.tags ?? {};
     // 「识别出标签」的判定：至少拿到了歌名或歌手，而且不是靠文件名兜出来的
     if (t.artist) tagged++;
     return {
@@ -114,6 +117,7 @@ export async function toMediaItemsWithTags(
       album: t.album,
       year: t.year,
       duration: t.duration,
+      cover: r.cover,
       mediaType: 'music' as const,
       playUrl: convertFileSrc(f.path),
     };

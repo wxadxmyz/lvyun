@@ -14,6 +14,9 @@ export interface SourceConfig {
   enabled: boolean;
   priority: number;
   extra?: Record<string, any>;
+  // ── v2.4.0 A2：订阅元数据（可选 → 旧数据自动兼容，无需迁移）──
+  subUrl?: string; // 订阅地址：有值即代表该源可刷新同步
+  subUpdatedAt?: number; // 上次同步时间戳（毫秒）
 }
 
 // JS 脚本源（v2.3.0）：由统一 JS 引擎执行 spider 脚本驱动。

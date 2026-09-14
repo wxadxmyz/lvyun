@@ -22,7 +22,6 @@ import SplashScreen from '../components/SplashScreen';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 type Tab = 'home' | 'player' | 'settings';
-const ORDER: Tab[] = ['home', 'player', 'settings'];
 
 export default function MusicApp() {
   const store = useSources('music');
@@ -134,24 +133,6 @@ export default function MusicApp() {
     return pushBackHandler(() => { setLocalOpen(false); return true; });
   }, [localOpen]);
 
-  // touchStart ref for swipe navigation
-  const touchStart = useRef<{ x: number; y: number } | null>(null);
-  const onTouchStart = (e: React.TouchEvent) => {
-    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-  };
-  const onTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStart.current) return;
-    const dx = e.changedTouches[0].clientX - touchStart.current.x;
-    const dy = e.changedTouches[0].clientY - touchStart.current.y;
-    touchStart.current = null;
-    // 仅横滑切界面（避免与竖向滚动/播放页上下滑冲突）
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
-      const i = ORDER.indexOf(tab);
-      if (dx < 0 && i < ORDER.length - 1) goTab(ORDER[i + 1]);
-      else if (dx > 0 && i > 0) goTab(ORDER[i - 1]);
-    }
-  };
-
   const goSearch = (q: string) => {
     setSearchQuery(q);
     setSearchOpen(true);
@@ -187,7 +168,7 @@ export default function MusicApp() {
         iconSrc={import.meta.env.BASE_URL + 'icon.png'}
         gradient="linear-gradient(160deg, #FF7AB6 0%, #C05CFF 45%, #3A1E5C 100%)"
       />
-      <div className="app music-theme" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <div className="app music-theme">
       <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
         <defs>
           <linearGradient id="lvTabGrad" x1="0" y1="0" x2="1" y2="1">

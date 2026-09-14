@@ -35,6 +35,14 @@ export function AddSourceModal({
       token: token.trim() || undefined,
       mountPath: type === 'alist' ? mountPath.trim() || '/' : undefined,
     });
+    // v2.4.0 F1（方案甲，学慕海）：添加成功后清空输入框，弹窗保持打开便于连续添加。
+    // if(!initial) 守卫：编辑模式不清空（否则正在编辑的内容会被抹掉）。
+    if (!initial) {
+      setName('');
+      setBaseUrl('');
+      setToken('');
+      setMountPath('/');
+    }
   };
 
   return (

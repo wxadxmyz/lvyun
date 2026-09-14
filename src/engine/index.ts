@@ -26,6 +26,17 @@ export function createSource(cfg: SourceConfig): MediaSource {
   }
 }
 
+// v2.4.0 A1-F1/F2：超时按源类型分层。
+// 关键：js / tvbox 走 Rust 侧 reqwest（fetch 桥接超时 20s），
+// 前端外层必须高于 20s，否则「超时抢跑」导致调试面板空白 + 误报「部分源失败」。
+const TIMEOUT_BY_TYPE: Record<string, number> = {
+  'music-json': 8000,
+  alist: 8000,
+  tvbox: 25000,
+  js: 25000,
+  mock: 5000,
+};
+
 // 跨源搜索：并发请求所有启用源，按优先级合并
 export async function aggregateSearch(
   sources: SourceConfig[],
@@ -39,7 +50,9 @@ export async function aggregateSearch(
   const results = await Promise.all(
     active.map(async (s) => {
       try {
-        const items = await withTimeout(createSource(s).search(keyword, 1), opts.timeout ?? 8000);
+        // 未显式传 timeout 时按源类型取（js/tvbox 给 25s，高于 Rust 20s）
+        const timeout = opts.timeout ?? TIMEOUT_BY_TYPE[s.type] ?? 8000;
+        const items = await withTimeout(createSource(s).search(keyword, 1), timeout);
         return { ok: true as const, sourceId: s.id, items };
       } catch (e: any) {
         return { ok: false as const, sourceId: s.id, message: e?.message ?? '搜索失败' };
@@ -104,7 +117,13 @@ export class SourceManager {
   async test(id: string): Promise<boolean> {
     const s = this.get(id);
     if (!s) return false;
-    return createSource(s).test();
+    // v2.4.0 A1-F1：js/tvbox 走 Rust 20s 桥接，套一层略高的超时避免 UI 冻结
+    const timeout = TIMEOUT_BY_TYPE[s.type] ?? 8000;
+    try {
+      return await withTimeout(createSource(s).test(), timeout + 2000);
+    } catch {
+      return false;
+    }
   }
 
   export(): string {

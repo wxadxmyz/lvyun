@@ -19,7 +19,7 @@
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use md5::{Digest, Md5};
-use rquickjs::{Context, Function, Object, Runtime};
+use rquickjs::{Context, Function, Object, Rest, Runtime};
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 
@@ -182,8 +182,17 @@ pub fn run_spider(app: tauri::AppHandle, payload: SpiderCall) -> Result<String, 
 
         // fetch 桥接：同步 HTTP，返回响应体字符串。
         // 兼容 TVBox spider 习惯：fetch(url, headers_json?, data?)
+        // v2.4.0 A1-F4：改为 Rest 可变参数，兼容 `fetch(u)` 单参写法
+        // （原三必填签名会让单参调用抛 `Expected 3 arguments, got 1`，被源脚本 try/catch 吞掉，
+        //  伪装成「源无数据」）。
         let sink_fetch = sink.clone();
-        let fetch_fn = Function::new(ctx.clone(), move |url: String, hd: Option<String>, data: Option<String>| -> Result<String, rquickjs::Error> {
+        let fetch_fn = Function::new(ctx.clone(), move |args: Rest<String>| -> Result<String, rquickjs::Error> {
+            let url = match args.0.first() {
+                Some(u) => u.clone(),
+                None => return Err(rquickjs::Error::new_into_js_message("fetch", "arg", "缺少 url 参数")),
+            };
+            let hd = args.0.get(1).cloned();
+            let data = args.0.get(2).cloned();
             let t0 = std::time::Instant::now();
             let client = reqwest::blocking::Client::builder()
                 .timeout(std::time::Duration::from_secs(20))

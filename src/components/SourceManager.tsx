@@ -122,7 +122,8 @@ export function SourceManager({
 
       <div className="hint-line">{msg}</div>
 
-      {showModal && <AddSourceModal onSubmit={(f) => { add(f); setShowModal(false); }} onClose={() => setShowModal(false)} />}
+      {/* v2.4.0 F1（方案甲）：提交后保持弹窗打开，清空逻辑才生效；用户点「取消」或遮罩关闭 */}
+      {showModal && <AddSourceModal onSubmit={(f) => { add(f); }} onClose={() => setShowModal(false)} />}
     </div>
   );
 }

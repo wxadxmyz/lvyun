@@ -27,6 +27,8 @@ export interface AppSettings {
   // v2.3.0 加密源解密（E5）：调用第三方解密端点还原加密接口（如饭太硬 jiemi.php）
   decryptEnabled: boolean; // 是否启用服务端解密
   decryptEndpoint: string; // 解密端点地址（可在设置里改/关）
+  // v2.4.0 I1：主页榜单接口地址覆盖项（留空则用默认 Cloudflare 地址）
+  toplistUrl?: string;
 }
 
 const KEY = 'mps_settings';
@@ -59,6 +61,7 @@ const DEFAULTS: AppSettings = {
   blurCover: true,
   decryptEnabled: true,
   decryptEndpoint: DEFAULT_DECRYPT_ENDPOINT,
+  toplistUrl: undefined,
 };
 
 // 非 hook 读取解密配置（供引擎模块如 tvbox.ts 在非组件上下文中使用）。
@@ -77,6 +80,20 @@ export function getDecryptConfig(): { enabled: boolean; endpoint: string } {
     /* ignore */
   }
   return { enabled: true, endpoint: DEFAULT_DECRYPT_ENDPOINT };
+}
+
+// 非 hook 读取单个设置值（供引擎/数据层在非组件上下文中使用），缺省回退默认值。
+export function getSettingsValue<K extends keyof AppSettings>(key: K): AppSettings[K] | undefined {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) {
+      const s = JSON.parse(raw) as Partial<AppSettings>;
+      if (key in s) return s[key];
+    }
+  } catch {
+    /* ignore */
+  }
+  return (DEFAULTS as AppSettings)[key];
 }
 
 export function useSettings() {

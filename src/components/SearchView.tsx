@@ -132,7 +132,12 @@ export function SearchView({
       )}
 
       {errors.length > 0 && (
-        <div className="err">部分源失败：{errors.map((e) => e.sourceId).join('、')}（可在调试面板查看详情）</div>
+        <div className="err">
+          部分源失败：
+          {errors
+            .map((e) => e.sourceId + (e.message ? `（${e.message}）` : ''))
+            .join('、')}
+        </div>
       )}
 
       {loading && <div className="loading">跨源搜索中…</div>}

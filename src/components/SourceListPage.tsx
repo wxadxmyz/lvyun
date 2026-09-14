@@ -38,16 +38,23 @@ export function SourceListPage({
         <div className="source-cards">
           {store.sources.map((s, i) => (
             <div key={s.id} className={`source-card ${s.enabled ? '' : 'off'}`}>
-              <div className="sc-main" onClick={() => store.toggle(s.id)}>
-                <div className="sc-name">{s.name}</div>
-                <div className="sc-url" title={s.baseUrl}>{s.baseUrl}</div>
+              {/* v2.4.0 B1：慕海式纵向三行（名称+开关 / 地址 / 按钮铺开）。
+                  点整行切换启用交互保留，迁移到 .sc-row-1；开关按钮仅作视觉指示。 */}
+              <div className="sc-row-1" onClick={() => store.toggle(s.id)}>
+                <div className="sc-name">
+                  {s.name}
+                  {s.subUrl && <span className="sub-badge">订阅</span>}
+                </div>
+                <span
+                  className={'switch' + (s.enabled ? ' on' : '')}
+                  onClick={(e) => { e.stopPropagation(); store.toggle(s.id); }}
+                  title="启用 / 停用"
+                />
               </div>
-              <span
-                className={'switch' + (s.enabled ? ' on' : '')}
-                onClick={(e) => { e.stopPropagation(); store.toggle(s.id); }}
-                title="启用 / 停用"
-              />
-              <div className="sc-actions">
+              <div className="sc-row-2">
+                <span className="sc-url" title={s.baseUrl}>{s.baseUrl}</span>
+              </div>
+              <div className="sc-row-3">
                 <button className="action-chip" disabled={i === 0} onClick={() => store.move(s.id, -1)}>
                   上移
                 </button>

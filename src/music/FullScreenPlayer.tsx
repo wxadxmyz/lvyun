@@ -65,11 +65,12 @@ export function FullScreenPlayer({
   const [menuView, setMenuView] = useState<'main' | 'add' | 'speed' | 'timer'>('main');
   const [showAuthor, setShowAuthor] = useState(false);
   const [showLandscape, setShowLandscape] = useState(false);
+  // v2.4.0 H1：横屏 3 秒无操作自动隐藏（只剩当前行歌词），点击切换
+  const [landHidden, setLandHidden] = useState(false);
+  const landTimer = useRef<number | undefined>(undefined);
   const [showEq, setShowEq] = useState(false);
   // 封面位切换成同尺寸歌词面板（设计稿 .lyrics，200×200 替换 .cover）
   const [coverLyric, setCoverLyric] = useState(false);
-  // 整屏歌词（菜单入口）
-  const [showLyricFull, setShowLyricFull] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [speed, setSpeed] = useState(settings.playbackRate || 1);
   const [eqGains, setEqGainsLocal] = useState<number[]>(getEqGains());
@@ -96,7 +97,6 @@ export function FullScreenPlayer({
   useEffect(
     () =>
       pushBackHandler(() => {
-        if (showLyricFull) { setShowLyricFull(false); return true; }
         if (showLandscape) { setShowLandscape(false); return true; }
         if (showAuthor) { setShowAuthor(false); return true; }
         if (showEq) { setShowEq(false); return true; }
@@ -110,7 +110,7 @@ export function FullScreenPlayer({
         if (coverLyric) { setCoverLyric(false); return true; }
         return false; // 播放器自己没有浮层，放行给外层
       }),
-    [showPlaylist, showAuthor, showLandscape, showMenu, menuView, showEq, coverLyric, showLyricFull],
+    [showPlaylist, showAuthor, showLandscape, showMenu, menuView, showEq, coverLyric],
   );
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const sleepTimer = useRef<number | undefined>(undefined);
@@ -163,6 +163,24 @@ export function FullScreenPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sleepMode, state.progress, state.duration]);
 
+  // v2.4.0 H1：横屏进入即启动 3 秒计时；超时淡出 chrome，只剩当前行歌词
+  useEffect(() => {
+    clearTimeout(landTimer.current);
+    if (!showLandscape) { setLandHidden(false); return; }
+    landTimer.current = window.setTimeout(() => setLandHidden(true), 3000);
+    return () => clearTimeout(landTimer.current);
+  }, [showLandscape]);
+
+  // 横屏点击：在「显示 / 隐藏」间切换，并重置 3 秒计时
+  const toggleLand = () => {
+    setLandHidden((h) => {
+      const nh = !h;
+      clearTimeout(landTimer.current);
+      if (!nh) landTimer.current = window.setTimeout(() => setLandHidden(true), 3000);
+      return nh;
+    });
+  };
+
   const drop = (to: number) => {
     if (dragIndex !== null && dragIndex !== to) player.reorderQueue(dragIndex, to);
     setDragIndex(null);
@@ -179,7 +197,7 @@ export function FullScreenPlayer({
       onClick: () => { player.setMode('list'); toast.push('已切换：列表循环'); setShowMenu(false); },
     },
     { key: 'less', icon: 'x-circle', label: '少推荐', onClick: () => { toast.push('已减少此类推荐'); setShowMenu(false); } },
-    { key: 'lyric', icon: 'music', label: '整屏歌词', onClick: () => { setShowMenu(false); setShowLyricFull(true); } },
+    // v2.4.0 H1（方案 C）：删除「整屏歌词」菜单项，歌词统一由「点封面」全屏进入
     { key: 'land', icon: 'maximize', label: '横屏播放', onClick: () => { setShowMenu(false); setShowLandscape(true); } },
   ];
 
@@ -188,9 +206,10 @@ export function FullScreenPlayer({
 
   // 进度条：点击 / 拖动 seek
   const barRef = useRef<HTMLDivElement>(null);
+  const ldBarRef = useRef<HTMLDivElement>(null); // 竖屏歌词页独立进度条
   const dragging = useRef(false);
-  const seekAt = (clientX: number) => {
-    const el = barRef.current;
+  const seekAt = (clientX: number, ref: React.RefObject<HTMLDivElement> = barRef) => {
+    const el = ref.current;
     if (!el || !state.duration) return;
     const r = el.getBoundingClientRect();
     const p = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
@@ -234,7 +253,8 @@ export function FullScreenPlayer({
         {/* 顶栏：汉堡 22px | 正 在 播 放 12px/字距2 | 竖三点 22px */}
         <div className="pv-top">
           <button className="pv-mi" onClick={() => setShowPlaylist(true)} title="播放列表" aria-label="播放列表">{IC.menu}</button>
-          <span className="pv-ttl">正 在 播 放</span>
+          {/* v2.4.0 C3：顶栏文案按真实播放状态动态显示 */}
+          <span className="pv-ttl">{empty ? '未在播放' : '正在播放'}</span>
           <button className="pv-mi" onClick={() => { setMenuView('main'); setShowMenu(true); }} title="更多" aria-label="更多">{IC.more}</button>
         </div>
 
@@ -261,10 +281,11 @@ export function FullScreenPlayer({
           </div>
         )}
 
-        {/* 歌名 18px bold / 艺人 13px。空态：歌名「未在播放」，艺人位用「占位」撑住高度防止控制区跳动 */}
-        <div className="pv-title">{empty ? '未在播放' : it.title}</div>
+        {/* v2.4.0 C4：封面下方=歌名/歌手显示位；空态留空（「未在播放」已搬到顶栏），
+            .hold 仍撑高度防止控制区跳动 */}
+        <div className="pv-title">{empty ? '' : it.title}</div>
         <div className={'pv-artist' + (empty ? ' hold' : '')}>
-          {empty ? '占位' : [it.artist, it.album ? `《${it.album}》` : ''].filter(Boolean).join(' · ') || '未知艺术家'}
+          {empty ? '' : [it.artist, it.album ? `《${it.album}》` : ''].filter(Boolean).join(' · ') || '未知艺术家'}
         </div>
 
         {/* 控制区贴底：进度条 4px + 时间 + 五个按钮（顺序/尺寸严格照设计稿） */}
@@ -320,6 +341,68 @@ export function FullScreenPlayer({
           </div>
         </div>
       </div>
+
+      {/* v2.4.0 H1（方案 C）：点封面 → 全屏滚动歌词页（竖屏）。
+          顶栏：左 返回箭头 / 中 歌名歌手 / 右 空；中部所有歌词行居中；
+          底部为与播放页完全一致的进度条 + 5 控制按钮。 */}
+      {coverLyric && (
+        <div className="ld-page">
+          <div className="ld-top">
+            <button className="ld-back" onClick={() => setCoverLyric(false)} aria-label="返回">
+              <Icon name="arrow-left" />
+            </button>
+            <div className="ld-head">
+              <div className="ld-title">{it.title || '未在播放'}</div>
+              <div className="ld-sub">{[it.artist, it.album ? `《${it.album}》` : ''].filter(Boolean).join(' · ') || '未知艺术家'}</div>
+            </div>
+          </div>
+
+          <div className="ld-scroll">
+            {lyricLines.length ? (
+              lyricLines.map((l, i) => (
+                <p key={i} className={'ld-line' + (i === aLine ? ' active' : '') + (i < aLine ? ' past' : '')}>{l.text || '·'}</p>
+              ))
+            ) : (
+              <p className="ld-empty">暂无歌词 / 该音源未提供歌词</p>
+            )}
+          </div>
+
+          <div className="pv-ctrls">
+            <div className="pv-bar" ref={ldBarRef}
+              onPointerDown={(e) => { if (empty || !state.duration) return; dragging.current = true; seekAt(e.clientX, ldBarRef); try { (e.target as any).setPointerCapture?.(e.pointerId); } catch { /* ignore */ } }}
+              onPointerMove={(e) => { if (dragging.current) seekAt(e.clientX, ldBarRef); }}
+              onPointerUp={() => { dragging.current = false; }}
+              onPointerCancel={() => { dragging.current = false; }}
+            >
+              <i className={empty ? 'zero' : ''} style={{ width: `${pct}%` }} />
+              <span className={'pv-thumb' + (empty ? ' zero' : '')} style={{ left: `${pct}%` }} />
+            </div>
+            <div className="pv-times">
+              <span>{fmtTime(state.progress)}</span>
+              <span>{empty ? '-0:00' : fmtTime(state.duration)}</span>
+            </div>
+            <div className="pv-btns">
+              {empty ? (
+                <>
+                  <span className="pv-btn disabled">{IC.repeat}</span>
+                  <span className="pv-btn disabled">{IC.prev}</span>
+                  <span className="pv-btn play disabled">{IC.play}</span>
+                  <span className="pv-btn disabled">{IC.next}</span>
+                  <span className="pv-btn like disabled">{IC.like}</span>
+                </>
+              ) : (
+                <>
+                  <button className="pv-btn" onClick={() => player.setMode(state.mode === 'list' ? 'one' : state.mode === 'one' ? 'shuffle' : 'list')} title="循环模式">{IC.repeat}</button>
+                  <button className="pv-btn" onClick={() => player.prev()} title="上一首">{IC.prev}</button>
+                  <button className="pv-btn play" onClick={() => player.toggle()} title={state.isPlaying ? '暂停' : '播放'}>{state.isPlaying ? IC.pause : IC.play}</button>
+                  <button className="pv-btn" onClick={() => player.next()} title="下一首">{IC.next}</button>
+                  <button className={'pv-btn like' + (fav ? ' on' : '')} onClick={() => library.toggleFavorite(it)} title={fav ? '取消喜欢' : '喜欢'}>{IC.like}</button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 均衡器面板（仍可从设置页进入，此处保留独立入口的轻量调用） */}
       {showEq && (
@@ -386,19 +469,6 @@ export function FullScreenPlayer({
         </div>
       )}
 
-      {/* 整屏歌词（菜单「整屏歌词」入口） */}
-      {showLyricFull && (
-        <div className="fs-lyrics-full" onClick={() => setShowLyricFull(false)}>
-          {lyricLines.length ? (
-            lyricLines.map((l, i) => (
-              <p key={i} className={'lyric-line' + (i === aLine ? ' active' : '')}>{l.text || '·'}</p>
-            ))
-          ) : (
-            <p className="lyric-line muted">[ 暂无歌词 ] 接入真实音源后将逐行显示歌词。</p>
-          )}
-        </div>
-      )}
-
       {/* 作者主页（完整页面） */}
       {showAuthor && (
         <div className="fs-author">
@@ -434,31 +504,44 @@ export function FullScreenPlayer({
         </div>
       )}
 
-      {/* 横屏模式（整界面横置沉浸） */}
+      {/* v2.4.0 H1：横屏播放页 —— 无封面，中部给歌词；顶部中间歌名歌手；
+          底部仅进度条（无按钮）；左上角返回（原右上 × 改左上）；
+          3 秒无操作淡出 chrome，只剩当前行歌词（独立绝对定位层 .ld-solo）。 */}
       {showLandscape && (
-        <div className="fs-land">
-          <button className="fs-land-exit icon" onClick={() => setShowLandscape(false)} aria-label="退出横屏"><Icon name="x" /></button>
+        <div className={'fs-land' + (landHidden ? ' hidden' : '')} onClick={toggleLand}>
+          <button
+            className="fs-land-back"
+            onClick={(e) => { e.stopPropagation(); setShowLandscape(false); }}
+            aria-label="退出横屏"
+          ><Icon name="arrow-left" /></button>
           <div className="fs-land-bg">
             <div className="fs-land-orb a" />
             <div className="fs-land-orb b" />
             <div className="fs-land-orb c" />
           </div>
           <div className="fs-land-content">
-            <div className="fs-land-cover" style={{ background: it.cover ? undefined : gradientFor(it.title), backgroundImage: it.cover ? `url(${it.cover})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }} />
-            <div className="fs-land-right">
-              <div className="fs-land-title">{it.title}</div>
-              <div className="fs-land-sub">{it.artist ?? ''} {it.album ? '· ' + it.album : ''}</div>
-              <div className="fs-land-bar"><div className="fs-land-fill" style={{ width: `${pct}%` }} /></div>
+            <div className="fs-land-head">
+              <div className="fs-land-title">{it.title || '未在播放'}</div>
+              <div className="fs-land-sub">{[it.artist, it.album ? `《${it.album}》` : ''].filter(Boolean).join(' · ') || '未知艺术家'}</div>
+            </div>
+            <div className="fs-land-lyric">
+              {lyricLines.length ? (
+                lyricLines.map((l, i) => (
+                  <p key={i} className={'ld-line' + (i === aLine ? ' active' : '') + (i < aLine ? ' past' : '')}>{l.text || '·'}</p>
+                ))
+              ) : (
+                <p className="ld-empty">暂无歌词 / 该音源未提供歌词</p>
+              )}
+            </div>
+            <div className="fs-land-bar" onClick={(e) => e.stopPropagation()}>
+              <div className="fs-land-fill" style={{ width: `${pct}%` }} />
               <div className="fs-land-times"><span>{fmtTime(state.progress)}</span><span>{fmtTime(state.duration)}</span></div>
-              <div className="fs-land-ctrls">
-                <button className="fs-btn" disabled={empty} onClick={() => player.setMode(state.mode === 'list' ? 'one' : state.mode === 'one' ? 'shuffle' : 'list')} title="循环"><Icon name={MODE_ICON[state.mode].icon} /></button>
-                <button className="fs-btn" disabled={empty} onClick={() => player.prev()} title="上一首"><Icon name="skip-back" /></button>
-                <button className="fs-btn play" onClick={() => player.toggle()} title={state.isPlaying ? '暂停' : '播放'}><Icon name={state.isPlaying ? 'pause' : 'play'} /></button>
-                <button className="fs-btn" disabled={empty} onClick={() => player.next()} title="下一首"><Icon name="skip-forward" /></button>
-                <button className={'fs-btn' + (fav ? ' fav' : '')} disabled={empty} onClick={() => library.toggleFavorite(it)} title="收藏"><Icon name={fav ? 'heart-filled' : 'heart'} /></button>
-              </div>
             </div>
           </div>
+          {/* 隐藏态独立层：当前行歌词居中放大（避免流式布局位置跑偏，见 11.4①） */}
+          {landHidden && aLine >= 0 && (
+            <div className="ld-solo">{lyricLines[aLine].text || '·'}</div>
+          )}
         </div>
       )}
 

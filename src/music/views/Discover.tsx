@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { aggregateSearch, MediaItem } from '../../engine';
 import { useLibrary } from '../../lib/library';
 import { usePlayback } from '../../lib/playback';
 import { SourceConfig } from '../../engine/types';
-import { gradientFor, initial } from '../../lib/cover';
 import { Icon } from '../../components/Icon';
+import { fetchToplists, ToplistItem } from '../../lib/toplists';
+import { ToplistDetail } from './ToplistDetail';
 
 export function Discover({
   sources,
@@ -25,36 +25,14 @@ export function Discover({
   onOpenDebug: () => void;
   onOpenLocal: () => void;
 }) {
-  const [all, setAll] = useState<MediaItem[]>([]);
+  // v2.4.0 I1：主页榜单（策展式静态数据，不含歌曲；点进用 keyword 搜用户自己的音源）
+  const [toplists, setToplists] = useState<ToplistItem[] | null>(null);
+  const [active, setActive] = useState<ToplistItem | null>(null);
 
   useEffect(() => {
-    if (sources.length === 0) return;
-    aggregateSearch(sources, '').then((r) => setAll(r.items.filter((i) => i.mediaType === 'music')));
-  }, [sources]);
-
-  const PlaylistSection = ({ title, items }: { title: string; items: MediaItem[] }) => (
-    <section className="row-section">
-      <div className="row-head">
-        <h3>{title}</h3>
-        {items.length > 0 && (
-          <button className="link" onClick={() => playback.playList(items)}><Icon name="play" size={14} /> 播放全部</button>
-        )}
-      </div>
-      <div className="row-cards">
-        {items.length === 0 && <span className="muted sm">暂无内容，去搜索或收藏一些歌曲吧。</span>}
-        {items.map((it, i) => (
-          <div className="mini-card" key={it.sourceId + it.id} onClick={() => playback.play(it, items, i)}>
-            <div className="mini-cover">
-              {it.cover ? <img src={it.cover} alt="" /> : <span className="ph" style={{ background: gradientFor(it.title) }}>{initial(it.title)}</span>}
-              <button className="mini-play" onClick={(e) => { e.stopPropagation(); playback.play(it, items, i); }}><Icon name="play" size={14} /></button>
-            </div>
-            <div className="mini-title">{it.title}</div>
-            <div className="mini-sub">{it.artist ?? ''}</div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
+    // 拉取失败一律返回 null，主页静默不渲染榜单区（不影响原有首页）
+    fetchToplists().then((d) => setToplists(d?.toplists ?? null)).catch(() => setToplists(null));
+  }, []);
 
   const homeTop = (
     <div className="home-top">
@@ -75,7 +53,7 @@ export function Discover({
         <div className="blank-state">
           <div className="blank-art"><Icon name="music" size={44} /></div>
           <h2>导入音乐源发现音乐</h2>
-          <p className="muted">在「设置 → 音源管理」里导入一个 JSON 音源，<br />推荐歌单与搜索就会在这里出现。</p>
+          <p className="muted">在「设置 → 音源管理」里导入一个 JSON 音源，<br />榜单与搜索就会在这里出现。</p>
           <button className="import-fab" onClick={onOpenSources}>
             <Icon name="plus" size={18} /> 导入音源
           </button>
@@ -88,7 +66,38 @@ export function Discover({
     <div className="view discover">
       {homeTop}
 
-      <PlaylistSection title="推荐歌单" items={all} />
+      {/* v2.4.0 I1：热门榜单 3×3 九宫格，正方形封面，整页上下滑 */}
+      {toplists && toplists.length > 0 && (
+        <section className="toplist-section">
+          <div className="row-head"><h3>热门榜单</h3></div>
+          <div className="toplist-grid">
+            {toplists.map((t) => {
+              const [c1, c2] = t.color && t.color.length === 2 ? t.color : ['#ff5e99', '#ff8a4c'];
+              return (
+                <button
+                  key={t.id}
+                  className="tl-card"
+                  onClick={() => setActive(t)}
+                  style={{ background: `linear-gradient(140deg, ${c1}, ${c2})` }}
+                >
+                  <span className="tl-rank">{t.initial ?? t.name.slice(0, 1)}</span>
+                  <span className="tl-name">{t.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {active && (
+        <ToplistDetail
+          item={active}
+          sources={sources}
+          library={library}
+          playback={playback}
+          onClose={() => setActive(null)}
+        />
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { MediaItem } from '../engine/types';
+import { removeCover, getCoverId } from './id3';
 
 const PREFIX = 'mps_lib_';
 
@@ -158,6 +159,8 @@ export function useLibrary(appKey: string) {
   const removeLocalMusic = useCallback((it: MediaItem) => {
     const k = localKeyOf(it);
     setLib((l) => ({ ...l, localMusic: l.localMusic.filter((x) => localKeyOf(x) !== k) }));
+    // v2.4.0 #D1：同步删除落盘的封面文件（按 id 反查），失败静默忽略
+    removeCover(getCoverId(it.id)).catch(() => {});
   }, []);
 
   const clearLocalMusic = useCallback(() => setLib((l) => ({ ...l, localMusic: [] })), []);

@@ -25,18 +25,23 @@ export function ImportSourcePage({
   const [links, setLinks] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const doImport = (sources: any[]) => {
+  // v2.4.0 A2：从「配置地址」导入时写入 subUrl（标记为可刷新订阅源）；手动粘贴/文件/分享码无 subUrl
+  const doImport = (sources: any[], subUrl?: string) => {
     if (!sources.length) {
       setStatus({ type: 'err', msg: '没有可导入的有效源（需包含 type 与 baseUrl/api）' });
       return;
     }
     const text = JSON.stringify(
-      sources.map((s) => ({ ...s, name: s.name || name.trim() || s.api || s.baseUrl || '导入源' })),
+      sources.map((s) => ({
+        ...s,
+        name: s.name || name.trim() || s.api || s.baseUrl || '导入源',
+        ...(subUrl ? { subUrl } : {}),
+      })),
     );
     const r = store.importSources(text);
     const hasVideo = sources.some((s) => s.type === 'tvbox');
     if (r.added > 0) {
-      let msg = `已成功导入 ${r.added} 个源`;
+      let msg = subUrl ? `已作为订阅源加入 ${r.added} 个（可在仓库页刷新）` : `已成功导入 ${r.added} 个源`;
       if (mediaType === 'music' && hasVideo) {
         msg += '（含影视源：音乐搜索不会返回，建议在幕海中使用）';
       }
@@ -57,7 +62,7 @@ export function ImportSourcePage({
     setLinks([]);
     const res = await fetchFromUrl(url);
     setLoading(false);
-    if (res.kind === 'sources') doImport(res.sources);
+    if (res.kind === 'sources') doImport(res.sources, url.trim()); // 配置地址即订阅地址
     else if (res.kind === 'links') {
       setLinks(res.links);
       setStatus({ type: 'info', msg: `识别到 ${res.links.length} 个可能的配置链接，请点选其中一个` });
@@ -69,7 +74,7 @@ export function ImportSourcePage({
     setStatus({ type: 'info', msg: '正在解析所选链接…' });
     const res = await fetchFromUrl(link);
     setLoading(false);
-    if (res.kind === 'sources') doImport(res.sources);
+    if (res.kind === 'sources') doImport(res.sources, link);
     else if (res.kind === 'links') setLinks(res.links);
     else setStatus({ type: 'err', msg: res.message });
   };

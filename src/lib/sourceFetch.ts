@@ -62,15 +62,57 @@ function b64DecodeSafe(t: string): string | null {
   return null;
 }
 
+// v2.4.0 A2：容忍 JSON 里的 //、/* */ 注释与尾随逗号（TVBox/影视仓配置常见）。
+// 逐字符扫描，字符串内的 // 与逗号不误伤；最后去掉 } / ] 前的尾随逗号。
+function stripJsonComments(t: string): string {
+  let out = '';
+  let inStr: string | null = null;
+  let i = 0;
+  while (i < t.length) {
+    const c = t[i];
+    const n = t[i + 1];
+    if (inStr) {
+      if (c === '\\') { out += c + (n ?? ''); i += 2; continue; }
+      if (c === inStr) { out += c; inStr = null; i++; continue; }
+      out += c; i++; continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { inStr = c; out += c; i++; continue; }
+    if (c === '/' && n === '/') { while (i < t.length && t[i] !== '\n') i++; continue; }
+    if (c === '/' && n === '/*') { i += 2; while (i < t.length && !(t[i] === '*' && t[i + 1] === '/')) i++; i += 2; continue; }
+    out += c; i++;
+  }
+  return out.replace(/,(\s*[}\]])/g, '$1');
+}
+
+// v2.4.0 A2：把各种包装结构摊平成「源对象数组」。
+// 兼容顶层数组、{sources:[...]}、{list:[...]}、{urls:[...]}、{sites:[...]}、单个对象。
+// 注意：{urls:[]}/{sites:[]} 若为影视仓聚合（isTvboxConfig 命中）仍按单个 tvbox 源处理，此处不摊。
+function toSourceList(data: any): any[] {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.sources)) return data.sources;
+  if (data && Array.isArray(data.list)) return data.list;
+  if (data && Array.isArray(data.urls)) return data.urls;
+  if (data && Array.isArray(data.sites)) return data.sites;
+  return [data];
+}
+
 // TVBox / 影视仓：顶层 { sites:[...] } 或 { urls:[...] }。
 // 关键：不摊平成多个子源，而是整体作为一个 tvbox 源存储原始地址，搜索/播放时再解析。
 function isTvboxConfig(data: any): boolean {
   return !!(data && (Array.isArray(data.sites) || Array.isArray(data.urls)));
 }
 
+// v2.4.0 A2：从 URL 推断订阅名。GitHub / jsDelivr raw 等用路径末段（去扩展名）做名字，
+// 避免显示裸域名；其余回退到 hostname。
 function nameFromUrl(url: string): string {
   try {
-    const h = new URL(url).hostname.replace(/^www\./, '');
+    const u = new URL(url);
+    const h = u.hostname.replace(/^www\./, '');
+    if (/githubusercontent\.com|jsdelivr\.net|raw\.github|githack\.com|github\.com/.test(h)) {
+      const seg = u.pathname.split('/').filter(Boolean).pop() || '';
+      const name = seg.replace(/\.[^.]+$/, '');
+      if (name) return decodeURIComponent(name);
+    }
     if (h) return h;
   } catch {
     /* ignore */
@@ -111,7 +153,8 @@ function parseFetched(text: string, url: string): FetchResult {
 
   if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
     try {
-      const data = JSON.parse(trimmed);
+      // v2.4.0 A2：先去注释/尾随逗号再解析（TVBox 配置常带 // 与逗号，裸 JSON.parse 会抛异常被静默吞掉）
+      const data = JSON.parse(stripJsonComments(trimmed));
       // 影视仓 / TVBox 聚合配置：整体作为「一个」tvbox 源，仓库里只显示你粘贴的这个地址
       if (isTvboxConfig(data)) {
         return {
@@ -119,8 +162,7 @@ function parseFetched(text: string, url: string): FetchResult {
           sources: [{ name: nameFromUrl(url), type: 'tvbox', baseUrl: url }],
         };
       }
-      const arr = Array.isArray(data) ? data : Array.isArray(data?.sources) ? data.sources : [data];
-      const valid = normalize(arr);
+      const valid = normalize(toSourceList(data));
       if (valid.length) return { kind: 'sources', sources: valid };
     } catch {
       /* 不是 JSON，往下走 HTML / JS 分支 */
@@ -170,9 +212,9 @@ export function parsePasted(text: string): { sources: any[]; error?: string } {
   const t = text.trim();
   if (!t) return { sources: [], error: '内容为空' };
   try {
-    const data = JSON.parse(t);
-    const arr = Array.isArray(data) ? data : Array.isArray(data?.sources) ? data.sources : [data];
-    const valid = normalize(arr);
+    // v2.4.0 A2：容忍注释与尾随逗号
+    const data = JSON.parse(stripJsonComments(t));
+    const valid = normalize(toSourceList(data));
     if (valid.length) return { sources: valid };
     return { sources: [], error: '未找到有效源（需包含 type 与 baseUrl）' };
   } catch (e: any) {

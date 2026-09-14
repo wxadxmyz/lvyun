@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createSource, SourceConfig, SourceType, uuid } from './engine';
+import { fetchFromUrl } from './lib/sourceFetch';
 
 const PREFIX = 'mps_sources_';
 
@@ -90,6 +91,44 @@ export function useSources(appKey: string) {
     return JSON.stringify(sources, null, 2);
   }, [sources]);
 
+  // v2.4.0 A2：刷新某个订阅地址。按 baseUrl 去重；已存在则同步元信息（本地手改优先，不覆盖 baseUrl/token/extra），
+  // 不存在则新增，统一打上 subUrl + subUpdatedAt。
+  const refreshSubscription = useCallback(async (subUrl: string): Promise<{ ok: number; errors: string[] }> => {
+    try {
+      const res = await fetchFromUrl(subUrl);
+      if (res.kind !== 'sources') {
+        return { ok: 0, errors: [res.kind === 'error' ? res.message : '订阅未返回可用源'] };
+      }
+      setSources((s) => {
+        const byBase = new Map(s.map((x) => [x.baseUrl, x]));
+        for (const src of res.sources) {
+          const existing = byBase.get(src.baseUrl);
+          if (existing) {
+            existing.name = src.name || existing.name; // 本地为准：仅同步名字
+            existing.subUpdatedAt = Date.now();
+          } else {
+            s.push({
+              id: uuid(),
+              name: src.name || src.api || src.baseUrl || '订阅源',
+              type: src.type,
+              baseUrl: src.baseUrl,
+              token: src.token,
+              enabled: true,
+              priority: s.length,
+              subUrl,
+              subUpdatedAt: Date.now(),
+              extra: src.mountPath ? { mountPath: src.mountPath } : undefined,
+            });
+          }
+        }
+        return [...s];
+      });
+      return { ok: res.sources.length, errors: [] };
+    } catch (e: any) {
+      return { ok: 0, errors: [e?.message ?? '订阅刷新失败'] };
+    }
+  }, []);
+
   const test = useCallback(async (cfg: SourceConfig): Promise<boolean> => {
     try {
       return await createSource(cfg).test();
@@ -98,5 +137,5 @@ export function useSources(appKey: string) {
     }
   }, []);
 
-  return { sources, add, update, remove, toggle, move, importSources, exportSources, test };
+  return { sources, add, update, remove, toggle, move, importSources, exportSources, refreshSubscription, test };
 }
