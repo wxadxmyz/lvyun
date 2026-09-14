@@ -10,7 +10,7 @@
 // v2.4.1 #C：与 styles.css 的 --sat 兜底口径统一。
 // 此前这里写 24、CSS 兜底写 26，两处不一致 —— 若 env() 上报 0，
 // JS 兜底注入 24px 会覆盖 CSS 的 26px，实际留白比预期少 2px。
-const SAT_FALLBACK = 26; // 与 CSS 保持一致的安卓状态栏兜底高度（px）
+const SAT_FALLBACK = 34; // 与 CSS 保持一致的安卓状态栏兜底高度（px）
 
 function readPx(name: string): number {
   const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();

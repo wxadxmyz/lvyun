@@ -9,7 +9,7 @@
      .main / 各页顶部的 padding-top 全部失效，卡片上滑时一路滚进通知栏区域。
      对齐慕海 v3.5.0（styles.css:10）把兜底抬到 26px，并对齐其「不支持 max() 的 WebView
      会整条声明判无效」的坑，这里不套 max()。JS 兜底（lib/safeArea.ts）会在实测后再覆盖。 */
-  --sat: env(safe-area-inset-top, 26px);
+  --sat: env(safe-area-inset-top, 34px);
   --sab: max(env(safe-area-inset-bottom, 0px), 18px); /* 兜底至少18px，避免安卓手势条遮挡底部导航 */
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
@@ -23,7 +23,7 @@
    反而导致 --sat 未定义、所有 var(--sat) 失效（卡片上滑盖到通知栏），故必须分段。 */
 @supports (top: max(1px, 2px)) {
   :root {
-    --sat: max(env(safe-area-inset-top, 0px), 26px);
+    --sat: max(env(safe-area-inset-top, 0px), 34px);
   }
 }
 /* 每套皮肤的 --bg/--panel/--accent 等由 theme.tsx 写到 documentElement；
@@ -267,7 +267,7 @@ button.fav, .fav { color: var(--danger) !important; }
 .skin-name { font-size: 12px; color: var(--text); }
 
 /* ============ 设置页 · iOS 风分组卡片（两个 App 共用）============ */
-.settings-scroll { display: flex; flex-direction: column; gap: 18px; padding: 4px 2px 8px; }
+.settings-scroll { display: flex; flex-direction: column; gap: 18px; padding: calc(8px + var(--sat)) 2px 8px; overflow-y: auto; }
 .settings-group-title { font-size: 12px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin: 2px 6px 8px; }
 .settings-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
 .settings-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; border-bottom: 1px solid var(--border); }
@@ -597,7 +597,7 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
   /* 播放页在手机端：封面 200、信息居中、底部控制贴底 */
   .fs-stage { padding: 12px 16px 20px; }
   .fs-disc-wrap { margin-top: 4px; }
-  .fs-cover { width: 240px; height: 240px; border-radius: 24px; }
+  .fs-cover { width: 260px; height: 260px; border-radius: 24px; }
   .fs-cover img, .fs-cover .fs-ph { border-radius: 20px; }
   .fs-cover .fs-ph { font-size: 44px; }
   .fs-title { font-size: 18px; margin: 0 0 6px; }
@@ -921,12 +921,12 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 
 /* ============ 更多菜单：圆形图标网格 ============ */
 .fs-sheet-grip{ width:40px; height:4px; border-radius:4px; background:var(--border); margin:2px auto 16px; }
-.fs-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:18px 8px; padding:4px 6px 6px; }
+.fs-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px 6px; padding:4px 6px 6px; }
 .fs-grid-item{ display:flex; flex-direction:column; align-items:center; gap:10px; background:transparent; border:none; color:var(--text); cursor:pointer; }
 .fs-grid-circle{ width:54px; height:54px; border-radius:50%; background:rgba(255,255,255,.06); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; transition:transform .12s, background .15s; }
 .fs-grid-item:active .fs-grid-circle{ transform:scale(.9); background:color-mix(in srgb,var(--accent) 22%, var(--panel2)); }
 .fs-grid-circle svg{ width:26px; height:26px; color:var(--text); }
-.fs-grid-label{ font-size:12px; color:var(--muted); }
+.fs-grid-label{ font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
 
 /* ============ 作者主页（完整页面）============ */
 .fs-author{ position:absolute; inset:0; z-index:9; display:flex; flex-direction:column; overflow:auto; background:linear-gradient(180deg,#1a1018 0%, var(--bg) 55%); animation:fade .2s; }

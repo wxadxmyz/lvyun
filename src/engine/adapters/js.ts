@@ -7,6 +7,27 @@ import { MediaItem, MediaSource, PlayUrl, SourceConfig } from '../types';
 // spider 约定函数：search(key) / detail(id) / play(url)
 // 返回遵循常见音乐蜘蛛格式：{ list:[{ id, name, artist, album, pic }] }
 
+// v2.4.3 #A：移植幕海适配器预处理，修「CommonJS / ESM 残留脚本在 QuickJS script 模式下执行崩溃」导致的搜索失败。
+// 律云与幕海共用同一份 js_engine.rs，沙箱全局 API（fetch/md5/base64Encode/...）完全一致；真正差异在前端预处理。
+//   1) catsvodize：剥顶层 export/import（ESM 残留，QuickJS script 模式不支持顶层 export）；
+//   2) CommonJS 垫片：script 模式没有 module/exports/require 全局，音乐蜘蛛结尾
+//      `module.exports = {search, detail, play}` 会 ReferenceError，前置声明即可消除；
+//      而脚本里已定义的全局 function search/detail/play 仍可被沙箱直接 __global[func] 调用。
+const STRIP_ESM = /^\s*(export|import)\s+.*$/gm;
+const COMMONJS_SHIM = 'var module={exports:{}};var exports=module.exports;\n';
+
+function catsvodize(code: string): string {
+  return COMMONJS_SHIM + code.replace(STRIP_ESM, '');
+}
+
+// CatVod/音乐源命名兼容：优先试 Content 长名，调用失败或未声明则回退短名。
+// 纯全局函数音乐源两条都命中同一函数也无副作用（二次调用只是多走一次失败分支）。
+const COMPAT: Record<string, [string, string]> = {
+  search: ['searchContent', 'search'],
+  detail: ['detailContent', 'detail'],
+  play: ['playerContent', 'play'],
+};
+
 export function createJsSource(cfg: SourceConfig): MediaSource {
   const jsCfg = cfg as any;
   let cachedCode: string | null = null;
@@ -28,47 +49,36 @@ export function createJsSource(cfg: SourceConfig): MediaSource {
       cachedCode = null;
       cachedKey = null;
     }
+    let raw: string;
     if (jsCfg.spider) {
-      // 显式断言：上一行的 if 已保证非空，但 cachedCode 的类型是 string | null，
-      // TS 不跨语句收窄，所以这里直接返回字面量来源。
-      cachedCode = jsCfg.spider as string;
-      cachedKey = codeKey();
-      return jsCfg.spider as string;
-    }
-    if (jsCfg.spiderUrl) {
-      cachedCode = await invoke<string>('fetchsource', { url: jsCfg.spiderUrl });
-      cachedKey = codeKey();
-      return cachedCode;
-    }
-    if (jsCfg.api) {
-      cachedCode = await invoke<string>('fetchsource', { url: jsCfg.api });
-      cachedKey = codeKey();
-      return cachedCode;
+      raw = jsCfg.spider as string;
+    } else if (jsCfg.spiderUrl) {
+      raw = await invoke<string>('fetchsource', { url: jsCfg.spiderUrl });
+    } else if (jsCfg.api) {
+      raw = await invoke<string>('fetchsource', { url: jsCfg.api });
     }
     // v2.4.1 #G：兜底识别 `code` 字段。正常导入路径已由 sourceFetch.normalize 归一化为
     // spider，这里再兜一层，覆盖「绕过导入路径直接构造配置」的场景（如手动编辑 localStorage）。
-    if (jsCfg.code) {
-      cachedCode = jsCfg.code as string;
-      cachedKey = codeKey();
-      return jsCfg.code as string;
+    else if (jsCfg.code) {
+      raw = jsCfg.code as string;
+    } else {
+      throw new Error('JS 源缺少 spider 脚本（需提供 spider / spiderUrl / api / code 之一）');
     }
-    throw new Error('JS 源缺少 spider 脚本（需提供 spider / spiderUrl / api / code 之一）');
+    // v2.4.3 #A：加载即预处理（剥 ESM 残留 + CommonJS 垫片），缓存「处理后」的代码，
+    // 后续每次 call 直接复用，避免重复预处理。
+    cachedCode = catsvodize(raw);
+    cachedKey = codeKey();
+    return cachedCode;
   }
 
-  async function call(func: string, args: string[]): Promise<any> {
-    const code = await loadCode();
-    const raw = await invoke<string>('run_spider', {
-      // v2.3.11：name 供 Rust 侧标注日志归属（调试面板能看出是哪个源在请求）
-      payload: { code, func, args, api: jsCfg.api, ext: jsCfg.ext, name: cfg.name },
-    });
+  // 解析 spider 原始返回：JSON 字符串二次解析（CatVod 常返回 JSON 字符串而非对象）。
+  function parseSpider(raw: string): any {
     let parsed: any;
     try {
       parsed = JSON.parse(raw);
     } catch {
       return raw;
     }
-    // v2.3.11 #5：不少 CatVod / drpy 蜘蛛返回的是「JSON 字符串」而非对象，
-    // 不再二次解析就会把整串 JSON 当成结果传下去，最终 list 取不到、表现为搜索全空。
     if (typeof parsed === 'string') {
       try {
         const again = JSON.parse(parsed);
@@ -78,6 +88,27 @@ export function createJsSource(cfg: SourceConfig): MediaSource {
       }
     }
     return parsed;
+  }
+
+  async function call(func: string, args: string[]): Promise<any> {
+    const code = await loadCode();
+    // v2.4.3 #A：CatVod/音乐源命名兼容。优先长名（searchContent 等），失败或未声明回退短名。
+    const [primary, fallback] = COMPAT[func] ?? [func, func];
+    const names = primary === fallback ? [primary] : [primary, fallback];
+    let lastErr: unknown;
+    for (const name of names) {
+      try {
+        const raw = await invoke<string>('run_spider', {
+          // v2.3.11：name 供 Rust 侧标注日志归属（调试面板能看出是哪个源在请求）
+          payload: { code, func: name, args, api: jsCfg.api, ext: jsCfg.ext, name: cfg.name },
+        });
+        return parseSpider(raw);
+      } catch (e) {
+        lastErr = e; // 长名未定义/调用失败 → 试下一个候选
+      }
+    }
+    const err = lastErr as any;
+    throw new Error(err?.message || `调用 spider 失败：${func}`);
   }
 
   function toItems(list: any[]): MediaItem[] {
