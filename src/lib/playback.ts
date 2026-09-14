@@ -4,7 +4,17 @@ import { MediaItem, SourceConfig } from '../engine/types';
 import { useLibrary } from './library';
 
 // 统一的「播放一个 / 播放一整列」逻辑，供音乐与影视两端复用
-export function usePlayback(sources: SourceConfig[], library: ReturnType<typeof useLibrary>) {
+//
+// v2.4.5 #6：新增第三参 onPlayed —— 「播完顺手跳到播放页」的钩子。
+// 此前 play/playList 只负责播放、不含任何导航，于是「搜索结果点一首、没反应」
+// （其实是播了但界面没动），10 个调用点各漏一遍。
+// 现在由宿主（MusicApp）注入 goTab('player')，所有入口一处生效，
+// 以后新增入口也不会再漏。
+export function usePlayback(
+  sources: SourceConfig[],
+  library: ReturnType<typeof useLibrary>,
+  onPlayed?: () => void,
+) {
   // 订阅一次，保证组件在 player 状态变化时刷新
   usePlayer();
 
@@ -12,12 +22,14 @@ export function usePlayback(sources: SourceConfig[], library: ReturnType<typeof 
     library.addHistory(item);
     if (queue && queue.length) player.playQueue(queue, index);
     else player.playItem(item);
+    onPlayed?.();
   };
 
   const playList = (items: MediaItem[], index = 0) => {
     if (!items.length) return;
     library.addHistory(items[Math.max(0, Math.min(index, items.length - 1))]);
     player.playQueue(items, index);
+    onPlayed?.();
   };
 
   return { play, playList };

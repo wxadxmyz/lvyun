@@ -29,7 +29,6 @@ type Tab = 'home' | 'player' | 'settings';
 export default function MusicApp() {
   const store = useSources('music');
   const library = useLibrary('music');
-  const playback = usePlayback(store.sources, library);
   const { settings } = useSettings();
   const state = usePlayer(); // 订阅播放状态（播放 tab 依赖）
   useGlobalShortcuts(); // 全局快捷键：空格/←→/↑↓/M/N/P
@@ -49,6 +48,10 @@ export default function MusicApp() {
     if (t === 'player') setFromTab(tab);
     setTab(t);
   };
+
+  // v2.4.5 #6：所有「点歌曲」入口播完即跳播放页（统一注入，见 playback.ts）。
+  // 覆盖：搜索结果卡片/▶、历史页整行/▶、我的喜欢、歌单▶、榜单、本地音乐。
+  const playback = usePlayback(store.sources, library, () => goTab('player'));
 
   useEffect(() => {
     if (settings.themeColor) {
@@ -147,14 +150,20 @@ export default function MusicApp() {
     return (
       <div className="track-list">
         {items.length === 0 && <div className="muted sm">还没有播放记录。</div>}
+        {/* v2.4.5 #2：改用两行式（.track-row.tl2）。
+            旧布局是「封面40 + 歌名flex:1 + 歌手160 + 来源90」四列硬拼，
+            窄屏总宽一超，flex:1 的歌名列第一个被压成 0 宽 → 歌名整条消失。
+            现在歌名独占一行，歌手降为副行，来源缩成小标签，宽度永不为 0。 */}
         {items.map((it, i) => (
-          <div className="track-row" key={it.sourceId + it.id} onClick={() => playback.play(it, items, i)}>
+          <div className="track-row tl2" key={it.sourceId + it.id} onClick={() => playback.play(it, items, i)}>
             <span className="tcover" style={{ background: gradientFor(it.title) }}>{initial(it.title)}</span>
-            <span className="ttitle">{it.title}</span>
-            <span className="tsub">{it.artist ?? it.year ?? ''}</span>
+            <span className="tmain">
+              <span className="ttitle">{it.title}</span>
+              <span className="tsub">{it.artist ?? it.year ?? ''}</span>
+            </span>
             <span className="tsrc">{it.sourceName}</span>
             <span className="tactions">
-              <button className="mini" title="播放" onClick={() => playback.play(it, items, i)}><Icon name="play" size={16} /></button>
+              <button className="mini" title="播放" onClick={(e) => { e.stopPropagation(); playback.play(it, items, i); }}><Icon name="play" size={16} /></button>
             </span>
           </div>
         ))}

@@ -9,6 +9,9 @@ import { Icon } from '../components/Icon';
 import { checkForUpdate } from '../lib/tauriBridge';
 import { useSkin, SKINS } from '../lib/theme';
 import { getVersion } from '@tauri-apps/api/app';
+// v2.4.5 #7：下载任务此前只存在内存里，设置页「离线缓存」又只放了音质/并发两个选项，
+// 于是用户点了下载之后完全看不到进度和结果（「下载的歌曲在哪里？」）。
+import { useDownloads, downloadStore } from '../lib/downloads';
 // v2.3.11 #4：返回键栈式调度
 import { pushBackHandler } from '../lib/backStack';
 
@@ -82,12 +85,36 @@ export function SettingsPage({
   const [updateState, setUpdateState] = useState('');
   const [checking, setChecking] = useState(false);
   const [appVersion, setAppVersion] = useState(FALLBACK_VERSION);
+  const [cacheMsg, setCacheMsg] = useState('');
+  const dls = useDownloads();
   // 显示 Tauri 打包时的真实版本（tauri.conf.json 的 version），不再写死
   useEffect(() => {
     getVersion()
       .then((v) => { if (v) setAppVersion(v); })
       .catch(() => { /* 非 Tauri 环境（浏览器调试）保留回退值 */ });
   }, []);
+
+  // v2.4.5 #8：清除本地缓存（搜索记录 / 榜单缓存 / 播放历史 / 各类视图缓存），
+  // 但**必须保留音源配置**（mps_sources_*）—— 那是用户手动添加进去的资产，
+  // 清掉等于把整个 App 的片源全删了。
+  const clearCache = () => {
+    try {
+      const keep = /^mps_sources_/;
+      const keys: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && !keep.test(k)) keys.push(k);
+      }
+      if (!keys.length) { setCacheMsg('无缓存'); return; }
+      if (!window.confirm(`将清除 ${keys.length} 项缓存（音源配置会保留），确定继续吗？`)) return;
+      keys.forEach((k) => localStorage.removeItem(k));
+      setCacheMsg(`已清 ${keys.length} 项`);
+      window.alert(`已清除 ${keys.length} 项缓存，音源已保留。`);
+    } catch (e) {
+      window.alert('清除失败：' + String(e));
+    }
+  };
+
   const { skin, selectedId, setSkinId } = useSkin();
 
   const applyTheme = (c: string) => {
@@ -172,7 +199,6 @@ export function SettingsPage({
         <div className="settings-group-title">外观</div>
         <div className="settings-card">
           <NavRow icon="sliders" label="皮肤" value={skin.name} onClick={() => setSub('skin')} />
-          <NavRow icon="palette" label="主题色" value={ACCENT_NAMES[settings.themeColor || ''] || settings.themeColor || '蓝'} onClick={() => setSub('theme')} />
           <ToggleRow icon="camera" label="封面模糊背景" desc="播放页以封面作模糊背景" on={settings.blurCover} onChange={(v) => update({ blurCover: v })} />
         </div>
 
@@ -181,6 +207,9 @@ export function SettingsPage({
         <div className="settings-card">
           <NavRow icon="download" label="检查更新" value={`v${appVersion}`} onClick={() => setSub('update')} />
           <NavRow icon="file-text" label="关于" onClick={() => setSub('about')} />
+          {/* v2.4.5 #8：清除缓存。注意必须保留 mps_sources_* —— 那是用户自己添加的音源，
+              一并清掉等于把音源全删了（用户明确要求保留）。 */}
+          <NavRow icon="trash" label="清除缓存" value={cacheMsg || '保留音源'} onClick={clearCache} />
         </div>
       </div>
 
@@ -209,6 +238,30 @@ export function SettingsPage({
               <span className="label">并发下载数</span>
               <span className="value">3</span>
             </div>
+          </div>
+
+          {/* v2.4.5 #7：下载任务清单（进度 / 完成 / 失败原因） */}
+          <div className="settings-group-title">下载任务</div>
+          <div className="settings-card">
+            {dls.length === 0 && (
+              <div className="muted sm" style={{ padding: 10 }}>
+                还没有下载任务。在搜索结果点 ⬇ 即可下载；桌面端会弹系统保存对话框，安卓端存到系统「下载」目录。
+              </div>
+            )}
+            {dls.length > 0 && (
+              <div className="settings-row">
+                <span className="label">共 {dls.length} 个任务</span>
+                <button className="link" onClick={() => downloadStore.clearDone()}>清除已完成</button>
+              </div>
+            )}
+            {dls.map((t) => (
+              <div key={t.id} className="dl-row">
+                <span className="dl-name">{t.item.title}</span>
+                <span className={'dl-st ' + t.status}>
+                  {t.status === 'done' ? '已完成' : t.status === 'error' ? (t.error || '失败') : `${t.progress}%`}
+                </span>
+              </div>
+            ))}
           </div>
         </SubPage>
       )}

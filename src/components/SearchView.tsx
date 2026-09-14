@@ -3,6 +3,8 @@ import { aggregateSearch, MediaItem, MediaType, SourceConfig } from '../engine';
 import { useLibrary } from '../lib/library';
 import { downloadStore } from '../lib/downloads';
 import { Icon } from './Icon';
+// v2.4.5 #9：紧凑列表用封面色块占位
+import { gradientFor, initial } from '../lib/cover';
 // v2.3.11 #4：返回键栈式调度
 import { pushBackHandler } from '../lib/backStack';
 // v2.4.1 #I：搜索结果标记源配置指纹，供换源后判断旧直链是否仍可信
@@ -61,6 +63,13 @@ export function SearchView({
     (acc[it.sourceName] ??= []).push(it);
     return acc;
   }, {});
+
+  // v2.4.5 #9：来源筛选 tab（全部 / 各音源）。跨源搜索一次能回几十条混排结果，
+  // 之前只能整屏翻，现在可以只看某一个源的结果。
+  const [srcFilter, setSrcFilter] = useState<string>('__all__');
+  const srcNames = Object.keys(groups);
+  const shown = srcFilter === '__all__' ? items : (groups[srcFilter] ?? []);
+  useEffect(() => { setSrcFilter('__all__'); }, [items]);
 
   useEffect(() => {
     if (initialQuery && initialQuery.trim()) run(initialQuery);
@@ -151,45 +160,66 @@ export function SearchView({
 
       {loading && <div className="loading">跨源搜索中…</div>}
 
-      {Object.entries(groups).map(([src, list]) => (
-        <div key={src} className="result-group">
-          <div className="row-head">
-            <h4>来自：{src}（{list.length}）</h4>
-            {enableQueue && onQueue && (
-              <button className="link" onClick={() => onQueue(list)}>整组加入队列</button>
-            )}
-          </div>
-          <div className={mediaType === 'video' ? 'cards video-cards' : 'cards'}>
-            {list.map((it) => (
-              <div className={mediaType === 'video' ? 'vcard' : 'card'} key={it.sourceId + it.id} onClick={() => onPlay(it)}>
-                <div className={mediaType === 'video' ? 'vcover' : 'cover'}>
-                  {it.cover ? <img src={it.cover} alt="" /> : <Icon name={it.mediaType === 'music' ? 'music' : 'film'} size={mediaType === 'video' ? 40 : 22} />}
-                </div>
-                <div className="meta">
-                  <div className="title">{it.title}</div>
-                  <div className="sub">{it.artist ?? it.year ?? ''}{it.artist && it.year ? ' · ' + it.year : ''}</div>
-                  <div className="src-tag">{it.sourceName}</div>
-                </div>
-                {it.episodes && it.episodes.length > 1 && <span className="eps">{it.episodes.length}集</span>}
-                <div className="card-actions" onClick={(e) => e.stopPropagation()}>
-                  <button className="mini" title="播放" onClick={() => onPlay(it)}><Icon name="play" size={16} /></button>
-                  {enableQueue && onQueue && (
-                    <button className="mini" title="加入队列" onClick={() => onQueue([it])}><Icon name="plus" size={16} /></button>
-                  )}
-                  <button
-                    className={'mini' + (library.isFavorite(it) ? ' fav' : '')}
-                    title="收藏"
-                    onClick={() => library.toggleFavorite(it)}
-                  >
-                    <Icon name={library.isFavorite(it) ? 'heart-filled' : 'heart'} size={16} />
-                  </button>
-                  <button className="mini" title="下载" onClick={() => downloadStore.start(it)}><Icon name="download" size={16} /></button>
-                </div>
-              </div>
-            ))}
-          </div>
+      {/* v2.4.5 #9：来源筛选 tab —— 多源混排时可只看某一个源 */}
+      {srcNames.length > 1 && (
+        <div className="src-tabs">
+          <button className={'src-tab' + (srcFilter === '__all__' ? ' on' : '')} onClick={() => setSrcFilter('__all__')}>
+            全部 {items.length}
+          </button>
+          {srcNames.map((n) => (
+            <button key={n} className={'src-tab' + (srcFilter === n ? ' on' : '')} onClick={() => setSrcFilter(n)}>
+              {n} {groups[n].length}
+            </button>
+          ))}
         </div>
-      ))}
+      )}
+
+      {/* v2.4.5 #9：结果由「大卡片网格」改为「紧凑单行列表」。
+          卡片一屏只能放 5~6 条、每行占 3 行高，翻十条要滑很久；
+          单行紧凑列表一屏 10+ 条，歌名+歌手两行，来源变小标签。 */}
+      <div className="track-list">
+        {shown.map((it, i) => (
+          <div
+            className="track-row tl2"
+            key={it.sourceId + it.id + i}
+            onClick={() => onPlay(it)}
+          >
+            <span className="tcover">
+              {it.cover
+                ? <img src={it.cover} alt="" />
+                : <span className="ph" style={{ background: gradientFor(it.title) }}>{initial(it.title)}</span>}
+            </span>
+            <span className="tmain">
+              <span className="ttitle">{it.title}</span>
+              <span className="tsub">
+                {[it.artist, it.album, it.year].filter(Boolean).join(' · ') || '未知'}
+              </span>
+            </span>
+            {it.episodes && it.episodes.length > 1 && <span className="tsrc">{it.episodes.length}集</span>}
+            <span className="tsrc">{it.sourceName}</span>
+            <span className="tactions" onClick={(e) => e.stopPropagation()}>
+              <button className="mini" title="播放" onClick={() => onPlay(it)}><Icon name="play" size={16} /></button>
+              {enableQueue && onQueue && (
+                <button className="mini" title="加入队列" onClick={() => onQueue([it])}><Icon name="plus" size={15} /></button>
+              )}
+              <button
+                className={'mini' + (library.isFavorite(it) ? ' fav' : '')}
+                title="收藏"
+                onClick={() => library.toggleFavorite(it)}
+              >
+                <Icon name={library.isFavorite(it) ? 'heart-filled' : 'heart'} size={15} />
+              </button>
+              <button className="mini" title="下载" onClick={() => downloadStore.start(it)}><Icon name="download" size={15} /></button>
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {searched && srcNames.length > 1 && srcFilter !== '__all__' && enableQueue && onQueue && (
+        <div className="row-head" style={{ padding: '4px 2px' }}>
+          <button className="link" onClick={() => onQueue(shown)}>把当前 {shown.length} 条加入队列</button>
+        </div>
+      )}
 
       {searched && !loading && items.length === 0 && <div className="empty">没有找到结果，换个关键词或检查音源。</div>}
     </div>

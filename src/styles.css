@@ -687,11 +687,16 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
 .pv-btns{ display:flex; align-items:center; justify-content:space-between; }
 .pv-btn{ width:40px; height:40px; border-radius:50%; background:transparent; color:#e6e6ec; border:none; padding:0;
   display:flex; align-items:center; justify-content:center; cursor:pointer; flex:none; }
-.pv-btn svg{ width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
-.pv-btn.play{ width:60px; height:60px; background:var(--accent); color:#fff; box-shadow:0 10px 26px rgba(255,92,138,.45); }
-.pv-btn.play svg{ width:26px; height:26px; fill:#fff; stroke:none; }
+/* v2.4.5 #1：不再在 CSS 里强制 fill/stroke。旧规则 fill:none;stroke:currentColor 会盖掉
+   SVG 元素上的 fill 属性，于是 ①实心图标画不出来；②播放键里的 <line> 暂停符被
+   `.play svg{stroke:none}` 抹掉变成空白（用户反馈「播放时看不到里面的内容」）。
+   现在颜色一律由图标自身 currentColor 决定，CSS 只管尺寸。 */
+.pv-btn svg{ width:22px; height:22px; display:block; }
+.pv-btn.play svg{ width:28px; height:28px; fill:#fff; stroke:none; }
 .pv-btn.like.on{ color:var(--accent); }
-.pv-btn.like.on svg{ fill:var(--accent); stroke:none; }
+.pv-btn.like.on svg{ fill:currentColor; stroke:none; }
+/* 非「列表循环」时模式键染主题色，配合 toast 让切换有明确反馈 */
+.pv-btn.mode.on{ color:var(--accent); }
 /* 空态：除播放键（设计稿保留粉底作唯一主 CTA）外全部灰掉 */
 .pv-btn.disabled{ color:#4a4a52; cursor:default; }
 .pv-btn.like.on.disabled{ color:#4a4a52; }
@@ -835,8 +840,9 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 /* ============ 播放列表页（≡ 打开，全屏，无 VIP）============ */
 .fs-playlist{position:absolute;inset:0;z-index:7;background:var(--bg);display:flex;flex-direction:column;animation:fade .15s;}
 .fs-pl-head{display:flex;align-items:center;gap:12px;padding:calc(14px + var(--sat)) 16px 12px;border-bottom:1px solid var(--border);}
-.fs-pl-head .icon{ width:38px; height:38px; border-radius:50%; background:var(--panel2); display:flex; align-items:center; justify-content:center; }
-.fs-pl-head .icon svg{ width:20px; height:20px; display:block; }
+/* v2.4.5 #3：返回箭头 20 → 24px；圈同步到 40px。此前只放大圈不放大图标，图标在圈里显得又小又空。 */
+.fs-pl-head .icon{ width:40px; height:40px; border-radius:50%; background:var(--panel2); display:flex; align-items:center; justify-content:center; }
+.fs-pl-head .icon svg{ width:24px; height:24px; display:block; margin:auto; }
 .fs-pl-head .pl-title{font-size:17px;font-weight:700;flex:1;}
 .fs-pl-head .pl-mode{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:999px;padding:6px 14px;font-size:13px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;}
 .fs-pl-list{flex:1;overflow:auto;padding:8px 12px;}
@@ -864,8 +870,8 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 /* v2.4.2 #D：子面板（添加到歌单 / 倍速 / 定时）左上角返回按钮。
    此前它只吃移动端 .icon{42px} 却无对应 svg 尺寸，导致「圈 42 / 图 22」缩在圈里。
    这里显式锁定 36px 圈 + 20px 图标并居中，脱离移动端 .icon{42px} 的影响。 */
-.fs-sheet-head .icon{width:36px;height:36px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex:0 0 auto;padding:0;color:var(--text);}
-.fs-sheet-head .icon svg{width:20px;height:20px;display:block;}
+.fs-sheet-head .icon{width:38px;height:38px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex:0 0 auto;padding:0;color:var(--text);}
+.fs-sheet-head .icon svg{width:24px;height:24px;display:block;margin:auto;}
 .fs-sheet-head .sh-title{font-size:16px;font-weight:700;flex:1;}
 .fs-sheet-row{display:flex;align-items:center;gap:14px;width:100%;background:transparent;border:none;color:var(--text);padding:14px 10px;border-radius:12px;font-size:15px;text-align:left;cursor:pointer;}
 .fs-sheet-row:hover{background:var(--panel2);}
@@ -953,6 +959,7 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 /* ============ 横屏模式（整界面横置沉浸）============ */
 .fs-land{ position:absolute; inset:0; z-index:10; display:flex; flex-direction:column; overflow:hidden; background:linear-gradient(120deg,#0e0c12,#15101b); animation:fade .2s; }
 .fs-land-back{ position:absolute; top:calc(12px + var(--sat)); left:16px; z-index:3; width:42px; height:42px; border-radius:50%; background:rgba(255,255,255,.1); border:none; color:var(--text); display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.fs-land-back svg{ width:24px; height:24px; display:block; margin:auto; }
 .fs-land-bg{ position:absolute; inset:-40px; z-index:0; }
 .fs-land-orb{ position:absolute; border-radius:50%; filter:blur(70px); opacity:.5; animation:land-drift 16s ease-in-out infinite; }
 .fs-land-orb.a{ width:300px; height:300px; background:var(--accent); left:4%; top:8%; }
@@ -1103,3 +1110,54 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
   cursor:pointer; background:linear-gradient(135deg,#ff5c8a,#7b5cff);
   box-shadow:0 10px 26px rgba(255,92,138,.30); }
 .sr-cta:disabled{ opacity:.45; cursor:default; box-shadow:none; }
+
+/* ============================================================
+   v2.4.5 —— 本轮 UI 修复
+   ============================================================ */
+
+/* #4：全屏子页返回键统一 40px 圈 + 24px 箭头 + 强制视觉居中。
+   旧实现吃全局 `.icon svg{20px}`：圈放大到 42px 而图标没跟上，
+   加上 SVG viewBox 自带留白，小尺寸下就表现为「图标不在圆圈中间」。 */
+.fullpage-head .icon svg,
+.fs-author-head .icon svg { width: 24px; height: 24px; display: block; margin: auto; }
+.fs-author-head .icon{
+  width:40px; height:40px; border-radius:50%; padding:0;
+  display:grid; place-items:center;
+}
+
+/* #2：两行式歌曲行 —— 歌名独占一行，永不归零。
+   旧四列硬拼（封面40 + 歌名flex:1 + 歌手160 + 来源90）在窄屏总宽溢出时，
+   flex:1 的歌名列第一个被压成 0 宽 → 歌名整条消失（历史页「没有歌曲名字」）。 */
+.track-row.tl2{ align-items:center; }
+.track-row.tl2 .tmain{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.track-row.tl2 .ttitle{ flex:none; font-size:14.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.track-row.tl2 .tsub{ width:auto; flex:none; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.track-row.tl2 .tsrc{
+  flex:none; font-size:10.5px; padding:2px 7px; border-radius:8px;
+  background:color-mix(in srgb, var(--accent) 16%, transparent); color:var(--accent);
+  white-space:nowrap; max-width:76px; overflow:hidden; text-overflow:ellipsis;
+}
+@media (max-width: 560px){
+  /* 兜底：尚未改用两行式的 track-row（榜单 / 本地音乐）在窄屏也要保住歌名 */
+  .track-row:not(.tl2) .tsub{ width:96px; }
+  .track-row:not(.tl2) .tsrc{ display:none; }
+}
+
+/* #1：模式键在「非列表循环」时已由 .pv-btn.mode.on 染色，
+   这里补一个轻量的按下反馈，避免误以为没点到 */
+.pv-btn.mode:active{ transform:scale(.92); }
+.pv-btn:active{ transform:scale(.92); }
+
+/* #9：搜索结果来源筛选 tab（原创样式：胶囊 + 计数） */
+.src-tabs{ display:flex; gap:8px; overflow-x:auto; padding:8px 2px 10px; -webkit-overflow-scrolling:touch; }
+.src-tabs::-webkit-scrollbar{ display:none; }
+.src-tab{ flex:none; height:30px; padding:0 13px; border-radius:999px; border:1px solid var(--border);
+  background:var(--card); color:var(--muted); font-size:12.5px; cursor:pointer; white-space:nowrap; }
+.src-tab.on{ background:color-mix(in srgb, var(--accent) 18%, transparent); border-color:var(--accent); color:var(--accent); font-weight:600; }
+
+/* #7：下载任务行 */
+.dl-row{ display:flex; align-items:center; gap:10px; padding:9px 12px; border-top:1px solid var(--border); }
+.dl-row .dl-name{ flex:1; min-width:0; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dl-row .dl-st{ flex:none; font-size:12px; color:var(--muted); }
+.dl-row .dl-st.done{ color:#23c08b; }
+.dl-row .dl-st.error{ color:var(--accent); }

@@ -3,7 +3,9 @@ import { usePlayer, fmtTime, player, getAudioElement } from '../lib/playerStore'
 import { getEqGains, setEqGains, subscribeEq, EQ_PRESETS, EQ_BANDS } from '../lib/spectrum';
 import { useSettings } from '../lib/settings';
 import type { useLibrary } from '../lib/library';
-import { SourceConfig } from '../engine/types';
+import { SourceConfig, MediaItem } from '../engine/types';
+// v2.4.5 #5：作者页改为真实搜索（此前只在播放队列里筛，所以只有播放过的歌）
+import { aggregateSearch } from '../engine';
 import { gradientFor } from '../lib/cover';
 import { Icon } from '../components/Icon';
 import { useToast } from '../lib/toast';
@@ -17,6 +19,7 @@ const MODE_ICON: Record<string, { icon: 'repeat' | 'repeat-one' | 'shuffle'; lab
   one: { icon: 'repeat-one', label: '单曲循环' },
   shuffle: { icon: 'shuffle', label: '随机播放' },
 };
+const MODE_LABEL: Record<string, string> = { list: '列表循环', one: '单曲循环', shuffle: '随机播放' };
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 type SleepMode = 'off' | '15' | '30' | '60' | 'end';
 
@@ -42,12 +45,78 @@ const IC = {
   // 封面内的音符
   note: <svg viewBox="0 0 24 24" {...S}><path d="M9 18V6l10-2v12" /><circle cx="6" cy="18" r="3" /><circle cx="16" cy="16" r="3" /></svg>,
   // 控制区五个按钮，顺序与设计稿一致：循环 / 上一首 / 播放 / 下一首 / 喜欢
-  repeat: <svg viewBox="0 0 24 24" {...S}><path d="M17 3l4 4-4 4" /><path d="M21 7H9a4 4 0 0 0-4 4" /><path d="M7 21l-4-4 4-4" /><path d="M3 17h12a4 4 0 0 0 4-4" /></svg>,
-  prev: <svg viewBox="0 0 24 24" {...S}><path d="M20 5v14l-9-7z" /><line x1="6" y1="5" x2="6" y2="19" /></svg>,
-  play: <svg viewBox="0 0 24 24" {...S}><path d="M8 5v14l11-7z" /></svg>,
-  pause: <svg viewBox="0 0 24 24" {...S}><line x1="9" y1="5" x2="9" y2="19" /><line x1="15" y1="5" x2="15" y2="19" /></svg>,
-  next: <svg viewBox="0 0 24 24" {...S}><path d="M4 5v14l9-7z" /><line x1="18" y1="5" x2="18" y2="19" /></svg>,
-  like: <svg viewBox="0 0 24 24" {...S}><path d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 11c0 5.5-7 10-7 10z" /></svg>,
+  //
+  // v2.4.5 #1：控制区图标整套重做为「A · 实心几何」—— 全部原创绘制，
+  // 造型语言为实心块面（不描边、无外圈），与网易云音乐等第三方图标无关。
+  // 两个硬性修复随本次一并落地：
+  //   ① 暂停键改为两根实心圆角柱。旧实现是 <line> + stroke，而 CSS
+  //      `.pv-btn.play svg{fill:#fff;stroke:none}` 会把 stroke 抹掉 → 播放中
+  //      按钮里什么都看不见（用户反馈「看不到里面的内容」）。实心元素不吃这条规则。
+  //   ② 循环模式改为三态三图形（见 IC_MODE），不再三态共用同一个图标。
+  prev: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="4.4" y="5.4" width="3" height="13.2" rx="1.5" fill="currentColor" />
+      <path d="M18.7 5.9v12.2a1.1 1.1 0 0 1-1.69.93l-8.6-6.1a1.1 1.1 0 0 1 0-1.86l8.6-6.1A1.1 1.1 0 0 1 18.7 5.9z" fill="currentColor" />
+    </svg>
+  ),
+  play: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7.7 4.6a1.2 1.2 0 0 1 1.83-1.02l10.3 6.4a1.2 1.2 0 0 1 0 2.04l-10.3 6.4A1.2 1.2 0 0 1 7.7 17.4z" fill="currentColor" />
+    </svg>
+  ),
+  pause: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="6.4" y="4.7" width="4.2" height="14.6" rx="2.1" fill="currentColor" />
+      <rect x="13.4" y="4.7" width="4.2" height="14.6" rx="2.1" fill="currentColor" />
+    </svg>
+  ),
+  next: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5.3 5.9v12.2a1.1 1.1 0 0 0 1.69.93l8.6-6.1a1.1 1.1 0 0 0 0-1.86l-8.6-6.1A1.1 1.1 0 0 0 5.3 5.9z" fill="currentColor" />
+      <rect x="16.6" y="5.4" width="3" height="13.2" rx="1.5" fill="currentColor" />
+    </svg>
+  ),
+  // 原创几何心：两个圆 + 一个下尖三角拼成（非通用贝塞尔心形路径）
+  like: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="8.4" cy="9.5" r="4.1" fill="currentColor" />
+      <circle cx="15.6" cy="9.5" r="4.1" fill="currentColor" />
+      <path d="M4.5 9.8h15L12 20.7z" fill="currentColor" />
+    </svg>
+  ),
+};
+
+/* v2.4.5 #1：循环模式三态 —— 原创「轨道循环」符号体系。
+   list = 三条列表线 + 右侧上下循环箭头；one = 单条 + 数字 1 + 循环箭头；
+   shuffle = 交叉折线 + 端点实心方块。三态三个图形，切了就知道当前是哪种。 */
+const IC_MODE: Record<string, JSX.Element> = {
+  list: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.6 7.6h9.2M3.6 12h9.2M3.6 16.4h5.6" />
+      <path d="M17.8 6.6v10.8" />
+      <path d="M15.4 8.9 17.9 6.4l2.5 2.5" />
+      <path d="M15.4 15.1l2.5 2.5 2.5-2.5" />
+    </svg>
+  ),
+  one: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.6 12h4.4" />
+      <text x="10.4" y="16.6" fontSize="13" fontWeight="800" textAnchor="middle" fill="currentColor" stroke="none" fontFamily="system-ui,sans-serif">1</text>
+      <path d="M17.8 6.6v10.8" />
+      <path d="M15.4 8.9 17.9 6.4l2.5 2.5" />
+      <path d="M15.4 15.1l2.5 2.5 2.5-2.5" />
+    </svg>
+  ),
+  shuffle: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.4 7.4h3.1c1 0 1.7.6 2.3 1.6l4.2 6c.6 1 1.3 1.6 2.3 1.6h3.1" />
+      <path d="M3.4 16.6h3.1c1 0 1.7-.6 2.3-1.6l4.2-6c.6-1 1.3-1.6 2.3-1.6h3.1" />
+      <rect x="16.4" y="5.1" width="3.6" height="3.6" rx="1.4" fill="currentColor" stroke="none" />
+      <rect x="16.4" y="15.3" width="3.6" height="3.6" rx="1.4" fill="currentColor" stroke="none" />
+      <rect x="1.6" y="5.5" width="2.6" height="2.6" rx="1.1" fill="currentColor" stroke="none" />
+      <rect x="1.6" y="15.7" width="2.6" height="2.6" rx="1.1" fill="currentColor" stroke="none" />
+    </svg>
+  ),
 };
 
 export function FullScreenPlayer({
@@ -202,6 +271,15 @@ export function FullScreenPlayer({
     setDragIndex(null);
   };
 
+  // v2.4.5 #1：循环模式三态循环 + 明确反馈。
+  // 旧实现只调 setMode 却不提示，而底部按钮三态共用一个 repeat 图标 —— 点了不知道切没切。
+  // 现在：切换 → toast 文案 + 非「列表循环」时按钮染主题色（.pv-btn.mode.on）。
+  const cycleMode = () => {
+    const next = state.mode === 'list' ? 'one' : state.mode === 'one' ? 'shuffle' : 'list';
+    player.setMode(next);
+    toast.push(`已切换：${MODE_LABEL[next] ?? next}`);
+  };
+
   // 更多菜单：圆形图标网格（4 列，54px 圆），对齐设计稿三点面板
   const MORE_ITEMS: { key: string; icon: any; label: string; onClick: () => void }[] = [
     { key: 'add', icon: 'plus', label: '加歌单', onClick: () => setMenuView('add') },
@@ -241,8 +319,44 @@ export function FullScreenPlayer({
     player.seek(p * state.duration);
   };
 
-  // 作者主页：本列表内该艺术家的作品
-  const artistTracks = state.queue.filter((q) => q.artist === it.artist);
+  // 作者主页：v2.4.5 #5 改为「真的去音源搜一次」。
+  // 旧实现 `state.queue.filter(q => q.artist === it.artist)` 只在当前播放队列里筛，
+  // 没播过的歌根本进不了队列 —— 于是作者页永远只剩「播放过的那几首」。
+  // 现在：按歌手名聚合搜索已启用音源 → 与队列/历史里的同歌手歌曲合并去重。
+  const [artistTracks, setArtistTracks] = useState<MediaItem[]>([]);
+  const [artistLoading, setArtistLoading] = useState(false);
+  useEffect(() => {
+    if (!showAuthor) return;
+    const artist = (it.artist ?? '').trim();
+    if (!artist) { setArtistTracks([]); return; }
+    let alive = true;
+    setArtistLoading(true);
+    (async () => {
+      try {
+        const names = sources.filter((s) => s.enabled).map((s) => ({ id: s.id, name: s.name }));
+        const r = await aggregateSearch(sources, artist, { mediaType: 'music' });
+        if (!alive) return;
+        const srcName = (id: string) => names.find((n) => n.id === id)?.name ?? '';
+        // 同标题去重（不同源同曲只留一条），队列里的同歌手歌曲排前面
+        const fromQueue = state.queue.filter((q) => q.artist === artist);
+        const seen = new Set<string>();
+        const merged: MediaItem[] = [];
+        for (const q of [...fromQueue, ...r.items]) {
+          const key = `${q.title}|${q.artist ?? ''}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          merged.push({ ...q, sourceName: q.sourceName || srcName(q.sourceId) } as MediaItem);
+        }
+        setArtistTracks(merged.slice(0, 50));
+      } catch {
+        if (alive) setArtistTracks([]);
+      } finally {
+        if (alive) setArtistLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAuthor, it.artist, sources]);
 
   return (
     // v2.4.1 #D：外层改用 Fragment，让「3 点菜单」能挂在 .pv-root 之外。
@@ -347,7 +461,7 @@ export function FullScreenPlayer({
             {empty ? (
               /* 空态：设计稿用 <span> 而非 <button>，明示不可点击；播放键保留粉底作唯一主 CTA */
               <>
-                <span className="pv-btn disabled">{IC.repeat}</span>
+                <span className="pv-btn mode disabled">{IC_MODE.list}</span>
                 <span className="pv-btn disabled">{IC.prev}</span>
                 <span className="pv-btn play disabled">{IC.play}</span>
                 <span className="pv-btn disabled">{IC.next}</span>
@@ -356,16 +470,17 @@ export function FullScreenPlayer({
             ) : (
               <>
                 <button
-                  className="pv-btn"
-                  onClick={() => player.setMode(state.mode === 'list' ? 'one' : state.mode === 'one' ? 'shuffle' : 'list')}
-                  title="循环模式"
-                >{IC.repeat}</button>
-                <button className="pv-btn" onClick={() => player.prev()} title="上一首">{IC.prev}</button>
-                <button className="pv-btn play" onClick={() => player.toggle()} title={state.isPlaying ? '暂停' : '播放'}>
+                  className={'pv-btn mode' + (state.mode !== 'list' ? ' on' : '')}
+                  onClick={cycleMode}
+                  title={MODE_LABEL[state.mode] ?? '循环模式'}
+                  aria-label={MODE_LABEL[state.mode] ?? '循环模式'}
+                >{IC_MODE[state.mode] ?? IC_MODE.list}</button>
+                <button className="pv-btn" onClick={() => player.prev()} title="上一首" aria-label="上一首">{IC.prev}</button>
+                <button className="pv-btn play" onClick={() => player.toggle()} title={state.isPlaying ? '暂停' : '播放'} aria-label={state.isPlaying ? '暂停' : '播放'}>
                   {state.isPlaying ? IC.pause : IC.play}
                 </button>
-                <button className="pv-btn" onClick={() => player.next()} title="下一首">{IC.next}</button>
-                <button className={'pv-btn like' + (fav ? ' on' : '')} onClick={() => library.toggleFavorite(it)} title={fav ? '取消喜欢' : '喜欢'}>
+                <button className="pv-btn" onClick={() => player.next()} title="下一首" aria-label="下一首">{IC.next}</button>
+                <button className={'pv-btn like' + (fav ? ' on' : '')} onClick={() => library.toggleFavorite(it)} title={fav ? '取消喜欢' : '喜欢'} aria-label={fav ? '取消喜欢' : '喜欢'}>
                   {IC.like}
                 </button>
               </>
@@ -416,7 +531,7 @@ export function FullScreenPlayer({
             <div className="pv-btns">
               {empty ? (
                 <>
-                  <span className="pv-btn disabled">{IC.repeat}</span>
+                  <span className="pv-btn mode disabled">{IC_MODE.list}</span>
                   <span className="pv-btn disabled">{IC.prev}</span>
                   <span className="pv-btn play disabled">{IC.play}</span>
                   <span className="pv-btn disabled">{IC.next}</span>
@@ -424,7 +539,7 @@ export function FullScreenPlayer({
                 </>
               ) : (
                 <>
-                  <button className="pv-btn" onClick={() => player.setMode(state.mode === 'list' ? 'one' : state.mode === 'one' ? 'shuffle' : 'list')} title="循环模式">{IC.repeat}</button>
+                  <button className={'pv-btn mode' + (state.mode !== 'list' ? ' on' : '')} onClick={cycleMode} title={MODE_LABEL[state.mode] ?? '循环模式'}>{IC_MODE[state.mode] ?? IC_MODE.list}</button>
                   <button className="pv-btn" onClick={() => player.prev()} title="上一首">{IC.prev}</button>
                   <button className="pv-btn play" onClick={() => player.toggle()} title={state.isPlaying ? '暂停' : '播放'}>{state.isPlaying ? IC.pause : IC.play}</button>
                   <button className="pv-btn" onClick={() => player.next()} title="下一首">{IC.next}</button>
@@ -466,11 +581,9 @@ export function FullScreenPlayer({
           <div className="fs-pl-head">
             <button className="icon" onClick={() => setShowPlaylist(false)} aria-label="返回"><Icon name="arrow-left" /></button>
             <span className="pl-title">播放列表</span>
-            <button
-              className="pl-mode"
-              onClick={() => player.setMode(state.mode === 'list' ? 'one' : state.mode === 'one' ? 'shuffle' : 'list')}
-            >
-              <Icon name={MODE_ICON[state.mode].icon} size={15} /> {MODE_ICON[state.mode].label}
+            {/* v2.4.5 #1：与底部按钮走同一个 cycleMode（带 toast），不再各写一套 */}
+            <button className="pl-mode" onClick={cycleMode} title={MODE_LABEL[state.mode] ?? '循环模式'}>
+              <Icon name={MODE_ICON[state.mode]?.icon ?? 'repeat'} size={15} /> {MODE_LABEL[state.mode] ?? '列表循环'}
             </button>
           </div>
           <div className="fs-pl-list">
@@ -513,9 +626,10 @@ export function FullScreenPlayer({
             <div className="fs-author-bio">原创音乐人 · 在律云与你相遇</div>
           </div>
           <div className="fs-author-stats">
-            <div><div className="n">{artistTracks.length || 12}</div><div className="t">作品</div></div>
-            <div><div className="n">0</div><div className="t">粉丝</div></div>
-            <div><div className="n">0</div><div className="t">关注</div></div>
+            {/* v2.4.5 #5：去掉写死的 `|| 12`（空也显示 12，是假数字），改真实数量 */}
+            <div><div className="n">{artistLoading ? '…' : artistTracks.length}</div><div className="t">作品</div></div>
+            <div><div className="n">—</div><div className="t">粉丝</div></div>
+            <div><div className="n">—</div><div className="t">关注</div></div>
           </div>
           <div className="fs-author-acts">
             <button className="fs-pill primary2" onClick={() => { setShowAuthor(false); player.playAt(state.index); }}>关注</button>
@@ -523,14 +637,19 @@ export function FullScreenPlayer({
           </div>
           <div className="fs-author-sec">热门作品</div>
           <div className="fs-author-tracks">
-            {artistTracks.length > 0 ? artistTracks.map((q, i) => (
-              <div key={i} className="fs-author-track" onClick={() => { setShowAuthor(false); player.playAt(state.index); }}>
+            {artistLoading && <div className="muted sm" style={{ padding: 16, textAlign: 'center' }}>正在搜索「{it.artist}」的作品…</div>}
+            {!artistLoading && artistTracks.map((q, i) => (
+              // v2.4.5 #5：点哪首播哪首（旧实现无论点哪首都播 state.index 那首）
+              <div key={i} className="fs-author-track" onClick={() => { setShowAuthor(false); player.playQueue(artistTracks, i); }}>
                 <span className="at-idx">{i + 1}</span>
                 <span className="at-cover" style={{ background: gradientFor(q.title) }} />
-                <span className="at-meta"><span className="at-name">{q.title}</span><span className="at-sub">{q.artist ?? ''}</span></span>
+                <span className="at-meta"><span className="at-name">{q.title}</span><span className="at-sub">{[q.artist, q.sourceName].filter(Boolean).join(' · ')}</span></span>
               </div>
-            )) : (
-              <div className="muted sm" style={{ padding: 16, textAlign: 'center' }}>列表内暂无该艺术家的其他作品。</div>
+            ))}
+            {!artistLoading && artistTracks.length === 0 && (
+              <div className="muted sm" style={{ padding: 16, textAlign: 'center' }}>
+                {it.artist ? `没有搜到「${it.artist}」的作品，可能是该源不支持按作者搜索。` : '当前歌曲没有歌手信息。'}
+              </div>
             )}
           </div>
         </div>
