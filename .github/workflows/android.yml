@@ -166,7 +166,7 @@ jobs:
           if "class MainActivity" not in src:
               print("::warning::class MainActivity not found, skip nav-bar patch")
               sys.exit(0)
-          if "_lvApplyNavBar" in src:
+          if "_lvApplyNavBar" in src and "setOrientation" in src:
               print("::warning::nav-bar already patched, skip")
               sys.exit(0)
           idx = src.index("class MainActivity")
@@ -213,6 +213,25 @@ jobs:
                       } catch (e: Exception) { return }
                       _lvNavLight = light
                       runOnUiThread { _lvApplyNavBar() }
+                  }
+
+                  // v2.4.2 #E：横屏真旋转。对齐慕海 android.yml 的 setOrientation。
+                  // 用 SCREEN_ORIENTATION_SENSOR_LANDSCAPE：横屏族 + 传感器决定正反（正横/反向横 180° 均自动跟手），
+                  // 且规范上忽略系统「自动旋转」开关 —— 既保「点横屏必转」，又让翻转跟手。
+                  @android.webkit.JavascriptInterface
+                  fun setOrientation(orientation: String) {
+                      runOnUiThread {
+                          try {
+                              when (orientation) {
+                                  "landscape" -> requestedOrientation =
+                                      android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                  "sensor" -> requestedOrientation =
+                                      android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+                                  else -> requestedOrientation =
+                                      android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                              }
+                          } catch (e: Exception) { /* ignore */ }
+                      }
                   }
               }
 

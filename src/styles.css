@@ -367,6 +367,11 @@ button.fav, .fav { color: var(--danger) !important; }
 
 /* ============ 通用圆形图标按钮（.icon）============ */
 .icon { background: var(--panel2); border: 1px solid var(--border); color: var(--text); width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; font-size: 14px; }
+/* v2.4.2 #D+F：.icon 内 SVG 的全局默认尺寸。此前 SVG 尺寸被移动端媒体查询里的
+   「.icon svg」无差别规则硬压成 22px（会覆盖 JSX 里传的 size），导致圆形按钮
+   圈大图小、图标缩在圈里。这里给一个与 38px 圈协调的默认值（20px），
+   各页面再用更具体的选择器按需覆盖。 */
+.icon svg { width: 20px; height: 20px; display: block; }
 .icon:hover { border-color: var(--accent); }
 .icon.active { border-color: var(--accent); color: var(--accent); }
 .fullpage-head .icon { border-radius: 12px; flex: 0 0 auto; align-self: center; display: inline-flex; align-items: center; justify-content: center; padding: 0; } /* 返回按钮：图标垂直居中 */
@@ -525,10 +530,18 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
      对齐慕海做法：播放页只留一层安全区，故这里不再承担。 */
   .pv-root { position: fixed; inset: 0; z-index: 60; background: var(--bg);
     padding: 0; }
+  /* v2.4.2 #B：播放页自身的顶部遮挡条（对齐幕海 .player-root::before）。
+     状态栏在 edge-to-edge 下浮在内容之上、不占布局空间，必须用一条与 --bg 同色的
+     固定条把「状态栏那条区域」垫成纯背景色；否则状态栏半透明层会压在封面泛光/内容上。
+     z-index:2 高于 .pv-blur(0) 与 .pv-player 内容(1)，但高度只有 var(--sat)，
+     顶栏在 .pv-player 的 padding-top 之下、不会被它盖住。 */
+  .pv-root::before { content: ''; position: fixed; left: 0; right: 0; top: 0;
+    height: var(--sat, 26px); background: var(--bg); z-index: 2; pointer-events: none; }
   /* 顶部安全区统一由本层承担（用 var(--sat) 而非直接写 env()，
      这样 safeArea.ts 的 JS 兜底与 @supports 的 max() 升级都能自动生效）；
-     底部给 Tab 与手势条让位。 */
-  .pv-player { padding: calc(6px + var(--sat, 26px)) 20px calc(var(--tabbar) + var(--sab) + 6px); }
+     底部给 Tab 与手势条让位。v2.4.2 #B：顶部在 --sat 基础上再加 10px 缓冲，
+     保证「汉堡 / 未在播放 / 竖三点」整条顶栏稳稳落在状态栏正下方，不被通知栏压到。 */
+  .pv-player { padding: calc(var(--sat, 26px) + 10px) 20px calc(var(--tabbar) + var(--sab) + 6px); }
 
   /* 底部 Tab 导航 */
   .bottom-nav {
@@ -543,7 +556,7 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
     color: var(--muted); font-size: 10.5px;
   }
   .bottom-nav button .ico { font-size: 20px; line-height: 1; display: flex; align-items: center; justify-content: center; }
-  .bottom-nav button .ico svg, .icon svg { width: 22px; height: 22px; display: block; }
+  .bottom-nav button .ico svg { width: 22px; height: 22px; display: block; }
   /* v2.3.9 底部 Tab 图标：E 版渐变霓虹描边（粉紫渐变，选中态加粗+发光） */
   .bottom-nav button .ico .tab-ic { width: 20px; height: 20px; fill: none; stroke: url(#lvTabGrad); stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
   .bottom-nav button.active .ico .tab-ic { stroke: url(#lvTabGradHot); stroke-width: 2.6; filter: drop-shadow(0 0 4px rgba(255,92,138,.5)); }
@@ -823,6 +836,7 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .fs-playlist{position:absolute;inset:0;z-index:7;background:var(--bg);display:flex;flex-direction:column;animation:fade .15s;}
 .fs-pl-head{display:flex;align-items:center;gap:12px;padding:calc(14px + var(--sat)) 16px 12px;border-bottom:1px solid var(--border);}
 .fs-pl-head .icon{ width:38px; height:38px; border-radius:50%; background:var(--panel2); display:flex; align-items:center; justify-content:center; }
+.fs-pl-head .icon svg{ width:20px; height:20px; display:block; }
 .fs-pl-head .pl-title{font-size:17px;font-weight:700;flex:1;}
 .fs-pl-head .pl-mode{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:999px;padding:6px 14px;font-size:13px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;}
 .fs-pl-list{flex:1;overflow:auto;padding:8px 12px;}
@@ -844,9 +858,14 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
    而 .bottom-nav(70) 在 .pv-root 之外 —— 父容器整体在 Tab 之下，
    内部 z-index 再大也无效，导致 3 点菜单最后几行被 Tab 切掉。
    JSX 已把该节点移到 .pv-root 之外（Fragment 同级），配合此处 fixed 即可覆盖 Tab。 */
-.fs-menu-mask{position:fixed;inset:0;z-index:75;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;animation:fade .15s;}
-.fs-sheet{width:100%;background:var(--panel);border-radius:18px 18px 0 0;padding:10px 12px calc(14px + var(--sab));max-height:84%;overflow:auto;animation:pop .16s ease;}
+.fs-menu-mask{position:fixed;inset:0;z-index:75;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;overflow:hidden;touch-action:none;animation:fade .15s;}
+.fs-sheet{width:100%;max-width:100%;background:var(--panel);border-radius:18px 18px 0 0;padding:10px 12px calc(14px + var(--sab));max-height:84%;overflow-y:auto;overflow-x:hidden;touch-action:pan-y;overscroll-behavior:contain;animation:pop .16s ease;}
 .fs-sheet-head{display:flex;align-items:center;gap:10px;padding:8px 6px 12px;border-bottom:1px solid var(--border);margin-bottom:6px;}
+/* v2.4.2 #D：子面板（添加到歌单 / 倍速 / 定时）左上角返回按钮。
+   此前它只吃移动端 .icon{42px} 却无对应 svg 尺寸，导致「圈 42 / 图 22」缩在圈里。
+   这里显式锁定 36px 圈 + 20px 图标并居中，脱离移动端 .icon{42px} 的影响。 */
+.fs-sheet-head .icon{width:36px;height:36px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex:0 0 auto;padding:0;color:var(--text);}
+.fs-sheet-head .icon svg{width:20px;height:20px;display:block;}
 .fs-sheet-head .sh-title{font-size:16px;font-weight:700;flex:1;}
 .fs-sheet-row{display:flex;align-items:center;gap:14px;width:100%;background:transparent;border:none;color:var(--text);padding:14px 10px;border-radius:12px;font-size:15px;text-align:left;cursor:pointer;}
 .fs-sheet-row:hover{background:var(--panel2);}

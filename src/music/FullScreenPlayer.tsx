@@ -9,6 +9,8 @@ import { Icon } from '../components/Icon';
 import { useToast } from '../lib/toast';
 // v2.3.11 #4：返回键栈式调度
 import { pushBackHandler } from '../lib/backStack';
+// v2.4.2 #E：横屏真旋转（等桥 / 校验 / 代际 token / 失败不切 UI）
+import { requestOrientation } from '../lib/orientation';
 
 const MODE_ICON: Record<string, { icon: 'repeat' | 'repeat-one' | 'shuffle'; label: string }> = {
   list: { icon: 'repeat', label: '列表循环' },
@@ -171,6 +173,20 @@ export function FullScreenPlayer({
     return () => clearTimeout(landTimer.current);
   }, [showLandscape]);
 
+  // v2.4.2 #E：横屏真旋转 —— 对齐幕海 VideoPlayer.tsx:332。
+  // showLandscape 变了就同步系统方向；退出（变 false）自动回竖屏（silent 不弹提示）。
+  useEffect(() => {
+    requestOrientation(showLandscape ? 'landscape' : 'portrait', {
+      silent: !showLandscape,
+      toast: toast.push,
+    });
+  }, [showLandscape, toast]);
+
+  // v2.4.2 #E：卸载归位 —— 退出播放页时强制回竖屏，避免遗留横屏状态把主页也带横了。
+  useEffect(() => {
+    return () => { requestOrientation('portrait', { silent: true }); };
+  }, []);
+
   // 横屏点击：在「显示 / 隐藏」间切换，并重置 3 秒计时
   const toggleLand = () => {
     setLandHidden((h) => {
@@ -198,7 +214,16 @@ export function FullScreenPlayer({
     },
     { key: 'less', icon: 'x-circle', label: '少推荐', onClick: () => { toast.push('已减少此类推荐'); setShowMenu(false); } },
     // v2.4.0 H1（方案 C）：删除「整屏歌词」菜单项，歌词统一由「点封面」全屏进入
-    { key: 'land', icon: 'maximize', label: '横屏播放', onClick: () => { setShowMenu(false); setShowLandscape(true); } },
+    // v2.4.2 #E：先请求系统旋转，成功才切横屏 UI —— 转不成功就不进 .fs-land，
+    // 彻底消灭「竖屏放大」假横屏（orientation.ts 内部已 toast 失败原因）。
+    { key: 'land', icon: 'maximize', label: '横屏播放',
+      onClick: () => {
+        setShowMenu(false);
+        requestOrientation('landscape', {
+          toast: toast.push,
+          onResult: (ok) => { if (ok) setShowLandscape(true); },
+        });
+      } },
   ];
 
   // 进度百分比（粉红填充轨道 + 白色滑块）
