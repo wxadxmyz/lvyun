@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useLibrary } from '../../lib/library';
 import { usePlayback } from '../../lib/playback';
 import { MediaItem } from '../../engine/types';
@@ -10,27 +10,15 @@ export function Library({
   library,
   playback,
   onOpenDebug,
+  onOpenLocal,
 }: {
   library: ReturnType<typeof useLibrary>;
   playback: ReturnType<typeof usePlayback>;
   onOpenDebug?: () => void;
+  /** v2.3.11 #6：本地音乐统一走「扫描」页，这里只做入口跳转 */
+  onOpenLocal?: () => void;
 }) {
   const [tab, setTab] = useState<'fav' | 'playlists' | 'history' | 'local' | 'download'>('fav');
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const importLocal = (files: FileList | null) => {
-    if (!files) return;
-    const items: MediaItem[] = Array.from(files).map((f, i) => ({
-      id: 'local_' + Date.now() + '_' + i,
-      sourceId: 'local',
-      sourceName: '本地',
-      title: f.name.replace(/\.[^.]+$/, ''),
-      mediaType: 'music',
-      playUrl: URL.createObjectURL(f),
-    }));
-    library.addLocalMusic(items);
-    setTab('local');
-  };
 
   const TrackList = ({ items, onRemove }: { items: MediaItem[]; onRemove?: (it: MediaItem) => void }) => (
     <div className="track-list">
@@ -78,11 +66,16 @@ export function Library({
       )}
       {tab === 'local' && (
         <>
+          {/* v2.3.11 #6：原先这里是「导入本地音乐」文件选择器，走 URL.createObjectURL ——
+              那产出的是**内存 blob 地址**，却被当成普通字符串存进了 localStorage，
+              App 一重启地址就失效，列表照旧显示但点了放不出声。
+              现在统一跳到扫描页（走 convertFileSrc，可跨重启），并复用同一份曲库。 */}
           <div className="toolbar">
-            <button className="primary" onClick={() => fileRef.current?.click()}>导入本地音乐</button>
-            <input ref={fileRef} type="file" accept="audio/*" multiple hidden onChange={(e) => importLocal(e.target.files)} />
+            <button className="primary" onClick={onOpenLocal}>
+              <Icon name="search" size={15} /> 扫描 / 导入本地音乐
+            </button>
           </div>
-          <TrackList items={library.lib.localMusic} onRemove={(it) => library.addLocalMusic(library.lib.localMusic.filter((x) => x.id !== it.id))} />
+          <TrackList items={library.lib.localMusic} onRemove={(it) => library.removeLocalMusic(it)} />
         </>
       )}
       {tab === 'playlists' && (

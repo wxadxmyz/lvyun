@@ -14,8 +14,10 @@ export function createJsSource(cfg: SourceConfig): MediaSource {
   async function loadCode(): Promise<string> {
     if (cachedCode) return cachedCode;
     if (jsCfg.spider) {
-      cachedCode = jsCfg.spider;
-      return cachedCode;
+      // 显式断言：上一行的 if 已保证非空，但 cachedCode 的类型是 string | null，
+      // TS 不跨语句收窄，所以这里直接返回字面量来源。
+      cachedCode = jsCfg.spider as string;
+      return jsCfg.spider as string;
     }
     if (jsCfg.spiderUrl) {
       cachedCode = await invoke<string>('fetchsource', { url: jsCfg.spiderUrl });
@@ -31,13 +33,26 @@ export function createJsSource(cfg: SourceConfig): MediaSource {
   async function call(func: string, args: string[]): Promise<any> {
     const code = await loadCode();
     const raw = await invoke<string>('run_spider', {
-      payload: { code, func, args, api: jsCfg.api, ext: jsCfg.ext },
+      // v2.3.11：name 供 Rust 侧标注日志归属（调试面板能看出是哪个源在请求）
+      payload: { code, func, args, api: jsCfg.api, ext: jsCfg.ext, name: cfg.name },
     });
+    let parsed: any;
     try {
-      return JSON.parse(raw);
+      parsed = JSON.parse(raw);
     } catch {
       return raw;
     }
+    // v2.3.11 #5：不少 CatVod / drpy 蜘蛛返回的是「JSON 字符串」而非对象，
+    // 不再二次解析就会把整串 JSON 当成结果传下去，最终 list 取不到、表现为搜索全空。
+    if (typeof parsed === 'string') {
+      try {
+        const again = JSON.parse(parsed);
+        if (again && typeof again === 'object') return again;
+      } catch {
+        /* 本来就是普通字符串结果（如 play 返回的裸 URL），保持原样 */
+      }
+    }
+    return parsed;
   }
 
   function toItems(list: any[]): MediaItem[] {

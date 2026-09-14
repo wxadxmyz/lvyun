@@ -9,6 +9,7 @@ export interface DebugEntry {
   durationMs: number;
   error?: string;
   preview?: string; // 响应预览（截断）
+  source?: string; // v2.3.11 #2：来源标注（源名 / "spider"）
 }
 
 let entries: DebugEntry[] = [];
@@ -50,3 +51,63 @@ export const debugLog = {
     return () => listeners.delete(l);
   },
 };
+
+/* -------------------------------------------------------------------------
+ * v2.3.11 #2：订阅 Rust 侧的 spider 调试事件
+ * -----------------------------------------------------------------------
+ * 背景：JS 脚本源的网络请求全部发生在 Rust 沙箱里，走的是 reqwest 而非前端
+ * fetchJson，所以此前调试面板对 JS 源一条记录都没有 —— 用 JS 源排障等于睁眼瞎。
+ * 现在 js_engine.rs 会把每次请求与每处报错 emit 成 "debug://spider" 事件，
+ * 这里转成标准 DebugEntry 落进同一个缓冲区，面板无需改动即能看到。
+ * ------------------------------------------------------------------------- */
+
+interface SpiderLogPayload {
+  ts: number;
+  level: 'info' | 'warn' | 'error';
+  source: string;
+  message: string;
+  url?: string;
+  method?: string;
+  status?: number;
+  durationMs?: number;
+  size?: number;
+  preview?: string;
+}
+
+let unlistenSpider: (() => void) | null = null;
+
+export async function initSpiderDebug(): Promise<void> {
+  if (unlistenSpider) return; // 幂等：重复挂载不重复计数
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    unlistenSpider = await listen<SpiderLogPayload>('debug://spider', (ev) => {
+      const p = ev.payload;
+      if (!p) return;
+      if (p.url) {
+        // 网络请求类：结构化明细
+        debugLog.record({
+          method: p.method ?? 'GET',
+          url: p.url,
+          status: p.status,
+          ok: typeof p.status === 'number' && p.status < 400,
+          durationMs: p.durationMs ?? 0,
+          preview: p.preview,
+          source: p.source,
+        });
+      } else {
+        // 脚本自身的输出 / eval 报错
+        debugLog.record({
+          method: 'SPIDER',
+          url: `spider · ${p.source}`,
+          ok: p.level !== 'error',
+          durationMs: 0,
+          error: p.level === 'error' ? p.message : undefined,
+          preview: p.level === 'error' ? undefined : p.message,
+          source: p.source,
+        });
+      }
+    });
+  } catch {
+    // 浏览器预览等非 Tauri 环境没有事件通道，静默降级即可
+  }
+}

@@ -21,6 +21,8 @@ export function AddSourceModal({
     'music-json': 'https://your-music-api.com',
     alist: 'https://your-alist.com',
     tvbox: 'http://www.饭太硬.cc/tv',
+    // JS 脚本源：可填 spider 远程脚本地址，或留空后在「导入 json 音源」里粘贴脚本
+    js: 'https://example.com/spider.js',
     mock: '',
   };
 

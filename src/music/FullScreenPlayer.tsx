@@ -7,6 +7,8 @@ import { SourceConfig } from '../engine/types';
 import { gradientFor } from '../lib/cover';
 import { Icon } from '../components/Icon';
 import { useToast } from '../lib/toast';
+// v2.3.11 #4：返回键栈式调度
+import { pushBackHandler } from '../lib/backStack';
 
 const MODE_ICON: Record<string, { icon: 'repeat' | 'repeat-one' | 'shuffle'; label: string }> = {
   list: { icon: 'repeat', label: '列表循环' },
@@ -87,23 +89,29 @@ export function FullScreenPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.sleepTimer, settings.sleepEnd]);
 
-  // 播放器内部浮层纳入系统返回手势栈：返回先关最上层浮层，再交由 MusicApp 退出播放页
-  useEffect(() => {
-    (window as any).__playerBack = () => {
-      if (showPlaylist) { setShowPlaylist(false); return true; }
-      if (showAuthor) { setShowAuthor(false); return true; }
-      if (showLandscape) { setShowLandscape(false); return true; }
-      if (showLyricFull) { setShowLyricFull(false); return true; }
-      if (coverLyric) { setCoverLyric(false); return true; }
-      if (showMenu) {
-        if (menuView !== 'main') { setMenuView('main'); return true; }
-        setShowMenu(false); return true;
-      }
-      if (showEq) { setShowEq(false); return true; }
-      return false;
-    };
-    return () => { delete (window as any).__playerBack; };
-  }, [showPlaylist, showAuthor, showLandscape, showMenu, menuView, showEq, coverLyric, showLyricFull]);
+  // 播放器内部浮层纳入系统返回手势栈：返回先关最上层浮层，再交由 MusicApp 退出播放页。
+  // v2.3.11 #4：由「往 window 上挂单槽 __playerBack」改为「向返回栈压一条 handler」。
+  // 单槽的毛病是只有最后挂载者能说话，播放器与 App 级浮层同时存在时会互相覆盖；
+  // 压栈后 MusicApp 的 dispatchBack 会先问到这一层，栈的自然顺序就是层级顺序。
+  useEffect(
+    () =>
+      pushBackHandler(() => {
+        if (showLyricFull) { setShowLyricFull(false); return true; }
+        if (showLandscape) { setShowLandscape(false); return true; }
+        if (showAuthor) { setShowAuthor(false); return true; }
+        if (showEq) { setShowEq(false); return true; }
+        if (showMenu) {
+          // 菜单内的二级视图（如歌单选择、睡眠定时）先退回主菜单，再关菜单
+          if (menuView !== 'main') { setMenuView('main'); return true; }
+          setShowMenu(false);
+          return true;
+        }
+        if (showPlaylist) { setShowPlaylist(false); return true; }
+        if (coverLyric) { setCoverLyric(false); return true; }
+        return false; // 播放器自己没有浮层，放行给外层
+      }),
+    [showPlaylist, showAuthor, showLandscape, showMenu, menuView, showEq, coverLyric, showLyricFull],
+  );
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const sleepTimer = useRef<number | undefined>(undefined);
 
@@ -193,8 +201,11 @@ export function FullScreenPlayer({
   const artistTracks = state.queue.filter((q) => q.artist === it.artist);
 
   return (
+    // v2.3.11 #1：根节点由 .fs-player 改为 .pv-root。
+    // 播放页在 MusicApp 里已移出 <main>，不再继承 .main 的移动端三边内边距，
+    // 这里上下各自处理安全区、左右到边，真正「占满屏幕」（旧实现被 .main 的内边距夹住，四周留白）。
     <div
-      className="fs-player"
+      className="pv-root"
       onTouchStart={(e) => { swipeStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
       onTouchEnd={(e) => {
         if (!swipeStart.current) return;

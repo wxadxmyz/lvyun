@@ -3,6 +3,8 @@ import { aggregateSearch, MediaItem, MediaType, SourceConfig } from '../engine';
 import { useLibrary } from '../lib/library';
 import { downloadStore } from '../lib/downloads';
 import { Icon } from './Icon';
+// v2.3.11 #4：返回键栈式调度
+import { pushBackHandler } from '../lib/backStack';
 
 export function SearchView({
   sources,
@@ -56,6 +58,23 @@ export function SearchView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // v2.3.11 #4：注册到返回栈。输入框里有内容时先清空（用户的心理预期是「退一步」），
+  // 已经是空输入才真正关闭搜索页，避免一次返回把整个页面带走。
+  useEffect(() => {
+    if (!onClose) return;
+    return pushBackHandler(() => {
+      if (kw.trim() !== '') {
+        setKw('');
+        setSearched(false);
+        setItems([]);
+        setErrors([]);
+        return true;
+      }
+      onClose();
+      return true;
+    });
+  }, [onClose, kw]);
+
   return (
     <div className="view searchview">
       <div className="searchtop">
@@ -76,7 +95,9 @@ export function SearchView({
             value={kw}
             onChange={(e) => setKw(e.target.value)}
             onKeyDown={(e) => {
-              if ((e.nativeEvent as InputEvent).isComposing) return; // 中文拼音组字中：放行上屏，不搜索
+              // isComposing 在 KeyboardEvent 上同样存在（Web 标准），直接读即可；
+              // 原先转成 InputEvent 属于类型误用（TS2352），且运行时等价。
+              if (e.nativeEvent.isComposing) return; // 中文拼音组字中：放行上屏，不搜索
               if (e.key !== 'Enter') return;
               e.preventDefault();
               (e.target as HTMLInputElement).blur(); // 收起软键盘

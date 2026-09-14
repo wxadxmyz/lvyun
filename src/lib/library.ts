@@ -26,6 +26,15 @@ function keyOf(it: MediaItem) {
   return `${it.sourceId}:${it.id}`;
 }
 
+/**
+ * v2.3.11 #6：本地音乐的去重键。
+ * 优先用播放地址（同一文件被两条路径扫到也应视为一首）；
+ * 没有地址时退回「歌名 + 歌手」组合，避免同一首歌重复入库。
+ */
+export function localKeyOf(it: MediaItem) {
+  return it.playUrl || keyOf(it) || `${it.title} ${it.artist ?? ''}`;
+}
+
 function load(appKey: string): LibraryState {
   try {
     const raw = localStorage.getItem(PREFIX + appKey);
@@ -38,9 +47,17 @@ function load(appKey: string): LibraryState {
 
 export function useLibrary(appKey: string) {
   const [lib, setLib] = useState<LibraryState>(() => load(appKey));
+  // v2.3.11 #6：localStorage 写入失败（配额超限）要让用户知道。
+  // 此前 setItem 直接抛在 useEffect 里，既没提示也可能打断渲染，用户只看到列表空了。
+  const [storageError, setStorageError] = useState<string | null>(null);
 
   useEffect(() => {
-    localStorage.setItem(PREFIX + appKey, JSON.stringify(lib));
+    try {
+      localStorage.setItem(PREFIX + appKey, JSON.stringify(lib));
+      setStorageError((prev) => (prev ? null : prev));
+    } catch {
+      setStorageError('本地存储空间不足，最新改动未能保存（多为本地音乐条目过多所致）');
+    }
   }, [lib, appKey]);
 
   const addHistory = useCallback((item: MediaItem) => {
@@ -114,12 +131,40 @@ export function useLibrary(appKey: string) {
 
   const clearHistory = useCallback(() => setLib((l) => ({ ...l, history: [] })), []);
 
-  const addLocalMusic = useCallback((items: MediaItem[]) => {
-    setLib((l) => ({ ...l, localMusic: [...items, ...l.localMusic] }));
+  /* -----------------------------------------------------------------------
+   * v2.3.11 #6：本地音乐成为「唯一写入口」。
+   * 此前全盘搜索写自己的 localStorage['lvyun.localMusic.v1']，「我的音乐 → 本地音乐」
+   * 写 library.lib.localMusic，两个列表互不可见，用户得在两个地方各管一遍。
+   * 现在全盘搜索 / 选文件夹 / 选文件三条路都归到这里。
+   * 去重键优先用文件地址；地址缺失时退回「歌名 + 歌手」组合，避免同一首歌重复入库。
+   * --------------------------------------------------------------------- */
+  const addLocalMusic = useCallback(
+    (items: MediaItem[]) => {
+      const key = (x: MediaItem) => localKeyOf(x);
+      const seen = new Set(lib.localMusic.map(key));
+      const fresh: MediaItem[] = [];
+      for (const it of items) {
+        const k = key(it);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        fresh.push(it);
+      }
+      if (fresh.length) setLib((l) => ({ ...l, localMusic: [...fresh, ...l.localMusic] }));
+      return fresh.length; // 返回真正入库的条数，供 UI 显示「新增 N / 重复跳过 M」
+    },
+    [lib.localMusic],
+  );
+
+  const removeLocalMusic = useCallback((it: MediaItem) => {
+    const k = localKeyOf(it);
+    setLib((l) => ({ ...l, localMusic: l.localMusic.filter((x) => localKeyOf(x) !== k) }));
   }, []);
+
+  const clearLocalMusic = useCallback(() => setLib((l) => ({ ...l, localMusic: [] })), []);
 
   return {
     lib,
+    storageError,
     addHistory,
     addSearch,
     clearSearch,
@@ -133,5 +178,7 @@ export function useLibrary(appKey: string) {
     setWatchProgress,
     clearHistory,
     addLocalMusic,
+    removeLocalMusic,
+    clearLocalMusic,
   };
 }

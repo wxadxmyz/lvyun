@@ -9,10 +9,12 @@ import { Icon } from '../components/Icon';
 import { checkForUpdate } from '../lib/tauriBridge';
 import { useSkin, SKINS } from '../lib/theme';
 import { getVersion } from '@tauri-apps/api/app';
+// v2.3.11 #4：返回键栈式调度
+import { pushBackHandler } from '../lib/backStack';
 
 // 回退版本：仅在取不到 Tauri 打包版本时使用（例如在浏览器里直接调试）。
 // 之前这里写死 '2.3.6'，导致 APK 已是新版本、设置页却一直显示旧号。
-const FALLBACK_VERSION = '2.3.10';
+const FALLBACK_VERSION = '2.3.11';
 
 function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -106,6 +108,19 @@ export function SettingsPage({
     else update({ sleepTimer: Number(mode), sleepEnd: false });
     setSub(null);
   };
+
+  // v2.3.11 #4：设置子页注册到返回栈。
+  // 旧实现里 settingsSub 是单个 string|null，没有任何层级信息 —— 子页内部再深一层的状态
+  // （如导入源页里的扫码面板）父容器看不见，返回只能一步 setSub(null) 跳回一级。
+  // 现在由本组件负责「子页 → 一级」，子页内部若还有浮层则由它自己再压一条，
+  // 栈从顶往下问，自然形成逐级返回。
+  useEffect(() => {
+    if (!sub) return;
+    return pushBackHandler(() => {
+      setSub(null);
+      return true;
+    });
+  }, [sub, setSub]);
 
   return (
     <>

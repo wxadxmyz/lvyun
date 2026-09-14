@@ -16,6 +16,8 @@ import { SettingsPage } from './SettingsPage';
 import { Disclaimer } from '../components/Disclaimer';
 import { gradientFor, initial } from '../lib/cover';
 import { Icon } from '../components/Icon';
+// v2.3.11 #4：返回键栈式调度
+import { dispatchBack, pushBackHandler } from '../lib/backStack';
 import SplashScreen from '../components/SplashScreen';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -53,69 +55,57 @@ export default function MusicApp() {
     }
   }, [settings.themeColor]);
 
-  // Android 原生返回键桥接：Kotlin MainActivity 通过 __onAndroidBack 调用此函数
-  useEffect(() => {
-    (window as any).__onAndroidBack = () => {
-      const s = navRef.current;
-      if ((window as any).__playerBack && (window as any).__playerBack()) return false;
-      if (s.showDebug) { setShowDebug(false); return false; }
-      if (s.searchOpen) { setSearchOpen(false); return false; }
-      if (s.myMusic) { setMyMusic(null); return false; }
-      if (s.historyOpen) { setHistoryOpen(false); return false; }
-      if (s.localOpen) { setLocalOpen(false); return false; }
-      if (s.settingsSub) { setSettingsSub(null); return false; }
-      if (s.tab === 'player') { setTab(s.fromTab); return false; } // 播放页返回上一级 tab，而非主页
-      if (s.tab !== 'home') { setTab('home'); return false; }
-      return true; // 不拦截，交给系统退出
-    };
-    return () => { delete (window as any).__onAndroidBack; };
-  }, []);
-
-  // 手势返回：Android 返回键 / 侧滑逐级返回，而非直接退出到桌面
+  /* ---------------------------------------------------------------------
+   * v2.3.11 #4：返回键改为「栈式调度」，两份入口共用同一个 handleBack。
+   *
+   * 返回值语义严格对齐 MainActivity 的约定（.github/workflows/android.yml:122-124）：
+   *   Kotlin: `window.__onAndroidBack() → true 则不调用 super.onBackPressed()`
+   *   即 **true = 本次返回已被消费（App 不退出）；false = 无人处理，交给系统退出**。
+   *
+   * ⚠️ 旧实现把这两个值写反了：关闭浮层后返回 false，Kotlin 侧照样调
+   *    super.onBackPressed()，于是「在二级页按返回 → 直接退出到桌面」。
+   *    这正是不少「返回手势不逐级」反馈的真正原因 —— 不是跳回主页，是退出了 App。
+   *
+   * 另一处结构性问题：原先是一条扁平 if-else 单槽链，settingsSub 只是 string|null，
+   * 子页内部更深的层级父容器看不见，所以只能一步清空。现在每个浮层/子页自己
+   * pushBackHandler，栈从顶往下问，天然支持 N 级逐级返回。
+   * ------------------------------------------------------------------- */
   const navRef = useRef({
     tab: 'home' as Tab,
     fromTab: 'home' as Tab,
-    searchOpen: false,
-    myMusic: null as null | 'favorites' | 'playlists',
-    showDebug: false,
-    historyOpen: false,
-    localOpen: false,
-    settingsSub: null as string | null,
   });
-  navRef.current = { tab, fromTab, searchOpen, myMusic, showDebug, historyOpen, localOpen, settingsSub };
+  navRef.current = { tab, fromTab };
+
+  const handleBack = (): boolean => {
+    // 1) 先问栈：已挂载的浮层/子页各自决定是否消费
+    if (dispatchBack()) return true;
+    // 2) 栈空 → 外层分级：播放页回到来源 tab，其它 tab 回到主页
+    const s = navRef.current;
+    if (s.tab === 'player') { setTab(s.fromTab); return true; }
+    if (s.tab !== 'home') { setTab('home'); return true; }
+    return false; // 已经在主页 → 交给系统退出
+  };
+
+  // Android 原生返回键桥接：Kotlin MainActivity 通过 __onAndroidBack 调用此函数
+  useEffect(() => {
+    (window as any).__onAndroidBack = () => handleBack();
+    return () => { delete (window as any).__onAndroidBack; };
+  }, []);
+
+  // 手势返回：Tauri v2 的 onBackButton（Android Predictive Back / 侧滑）。
+  // 注意：这里用「点访问」而非直接调用 —— onBackButton 的类型定义并非在所有
+  // @tauri-apps/api 版本里都有（旧版本是 onBackButton / 新版本仍保留），运行时由
+  // catch 兜底，避免类型与运行时耦合导致整个文件编译不过。
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     (async () => {
       try {
-        const un = await getCurrentWindow().onBackButton((event) => {
-          const s = navRef.current;
-          if ((window as any).__playerBack && (window as any).__playerBack()) { event.preventDefault(); return; }
-          if (s.showDebug) {
-            event.preventDefault();
-            setShowDebug(false);
-          } else if (s.searchOpen) {
-            event.preventDefault();
-            setSearchOpen(false);
-          } else if (s.myMusic) {
-            event.preventDefault();
-            setMyMusic(null);
-          } else if (s.historyOpen) {
-            event.preventDefault();
-            setHistoryOpen(false);
-          } else if (s.localOpen) {
-            event.preventDefault();
-            setLocalOpen(false);
-          } else if (s.settingsSub) {
-            event.preventDefault();
-            setSettingsSub(null);
-          } else if (s.tab === 'player') {
-            event.preventDefault();
-            setTab(s.fromTab);
-          } else if (s.tab !== 'home') {
-            event.preventDefault();
-            setTab('home');
-          }
-          // 否则不拦截，交给系统退出 App
+        const w = getCurrentWindow() as unknown as {
+          onBackButton?: (cb: (e: { preventDefault: () => void }) => void) => Promise<() => void>;
+        };
+        if (typeof w.onBackButton !== 'function') return;
+        const un = await w.onBackButton((event) => {
+          if (handleBack()) event.preventDefault();
         });
         unlisten = un;
       } catch {
@@ -124,6 +114,25 @@ export default function MusicApp() {
     })();
     return () => unlisten?.();
   }, []);
+
+  /* App 层级的浮层各自登记返回行为。栈式调度下新增浮层只要加一行，
+     不必再回到这里的中央登记表——从根上消灭「浮层忘了登记就退 App」的问题。 */
+  useEffect(() => {
+    if (!showDebug) return;
+    return pushBackHandler(() => { setShowDebug(false); return true; });
+  }, [showDebug]);
+  useEffect(() => {
+    if (!myMusic) return;
+    return pushBackHandler(() => { setMyMusic(null); return true; });
+  }, [myMusic]);
+  useEffect(() => {
+    if (!historyOpen) return;
+    return pushBackHandler(() => { setHistoryOpen(false); return true; });
+  }, [historyOpen]);
+  useEffect(() => {
+    if (!localOpen) return;
+    return pushBackHandler(() => { setLocalOpen(false); return true; });
+  }, [localOpen]);
 
   // touchStart ref for swipe navigation
   const touchStart = useRef<{ x: number; y: number } | null>(null);
@@ -220,7 +229,7 @@ export default function MusicApp() {
         </div>
       </header>
 
-      <main className="main">
+      <main className={'main' + (tab === 'player' ? ' player-open' : '')}>
         {tab === 'home' && !localOpen && (
           <Discover
             sources={store.sources}
@@ -234,13 +243,9 @@ export default function MusicApp() {
           />
         )}
 
-        {tab === 'player' && (
-          <FullScreenPlayer sources={store.sources} library={library} onClose={() => setTab(fromTab)} />
-        )}
-
         {tab === 'settings' && <SettingsPage onOpenMyMusic={setMyMusic} sub={settingsSub} setSub={setSettingsSub} />}
 
-        {localOpen && <LocalMusicView playback={playback} onClose={() => setLocalOpen(false)} />}
+        {localOpen && <LocalMusicView playback={playback} library={library} onClose={() => setLocalOpen(false)} />}
 
         {historyOpen && (
           <div className="fullpage">
@@ -280,6 +285,13 @@ export default function MusicApp() {
 
         {settings.showDesktopLyric && <DesktopLyric />}
       </main>
+
+      {/* v2.3.11 #1：播放页独立成与 <main> 平级的全屏层。
+          放在 main 里时会同时吃到 .main（移动端 14px / tabbar+80px）与 .pv-player
+          自身的内边距，四周自然留出白边；抬出来后才能真正铺满。 */}
+      {tab === 'player' && (
+        <FullScreenPlayer sources={store.sources} library={library} onClose={() => setTab(fromTab)} />
+      )}
 
       <nav className="bottom-nav">
         {(['home', 'player', 'settings'] as const).map((id) => (

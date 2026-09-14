@@ -274,7 +274,7 @@ button.fav, .fav { color: var(--danger) !important; }
 .blank-state p { margin: 0; line-height: 1.8; }
 
 /* 播放 tab 占位（无正在播放） */
-.fs-player.fs-empty { background: var(--bg); min-height: 100%; position: relative; }
+/* v2.3.11 #1：旧播放页根样式 .fs-player 已随 .pv-root 退役（无对应 DOM），移除。 */
 
 /* 播放页歌词浮层（移动端点封面翻歌词） */
 .fs-lyrics-full { position: absolute; inset: 0; z-index: 6; background: var(--bg); display: flex; flex-direction: column; gap: 14px; padding: 18% 8% 12%; overflow: auto; animation: fade .15s; }
@@ -359,7 +359,7 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
 .vol input[type='range'] { width: 80px; }
 
 /* ============ 全屏播放页（音乐）============ */
-.fs-player { position: relative; min-height: 100%; background: var(--bg); display: flex; flex-direction: column; animation: fade .2s; }
+/* v2.3.11 #1：同上，旧播放页根容器样式已由 .pv-root / .pv-player 取代。 */
 .fs-bg { position: absolute; inset: 0; background-size: cover; background-position: center; filter: blur(60px) brightness(.35); transform: scale(1.2); opacity: .8; }
 .fs-top { position: relative; display: flex; align-items: center; justify-content: space-between; padding: calc(4px + var(--sat)) 22px 4px; }
 .fs-top .icon { width: 22px; height: 22px; background: transparent; border: none; color: var(--text); flex: 0 0 auto; }
@@ -497,6 +497,15 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
 
   .main { padding: calc(14px + var(--sat)) 14px calc(var(--tabbar) + var(--sab) + 80px); }
 
+  /* v2.3.11 #1：播放页独立成 fixed 全屏层后，让 main 彻底让位，避免两个 flex:1 抢空间。
+     z-index 层级：.app::before(55) < .pv-root(60) < bottom-nav(70)，
+     即顶部遮挡条不再压住播放器，底部 Tab 仍浮在其上保持可点。 */
+  .main.player-open { display: none; }
+  .pv-root { position: fixed; inset: 0; z-index: 60; background: var(--bg);
+    padding: var(--sat, 0px) 0 0; }
+  /* 顶部安全区已由 .pv-root 承担，这里只在贴边处留一点余量，底部给 Tab 与手势条让位 */
+  .pv-player { padding: 6px 20px calc(var(--tabbar) + var(--sab) + 6px); }
+
   /* 底部 Tab 导航 */
   .bottom-nav {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); position: fixed; left: 0; bottom: 0; z-index: 70;
@@ -586,6 +595,12 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
    / 进度条 4px r3 底 #3a3a42 填充 #ff5c8a 滑块 13px 白圆 / 时间 11px 上 -6
    / 按钮 40px、播放键 60px 粉底带阴影 / 空态全灰 + 艺人位占位撑高
    ============================================================================ */
+/* v2.3.11 #1：播放页根容器。已从 <main> 移出，与它平级。
+   桌面：相对布局撑满 sidebar 右侧的内容区（行为与旧版一致）
+   移动：fixed 铺满整屏 —— 这是「播放页占不满」的根因修复：
+         原先播放页同时吃 .main 的 padding(14px / tabbar+80px) 与 .pv-player 自己的 padding，
+         两重叠加后四周留白，且 min-height:100% 量的是已扣除 padding 的 content-box。 */
+.pv-root{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
 .pv-player{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column; align-items:center;
   padding:calc(14px + var(--sat)) 20px calc(14px + var(--tabbar) + var(--sab)); overflow:hidden; }
 .pv-player > *{ position:relative; z-index:1; width:100%; }
@@ -767,26 +782,10 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .searchview .searchtop .sinput .search-ico{color:var(--muted);display:flex;}
 .searchview .searchtop .sclear{width:18px;height:18px;border-radius:50%;background:#3a3a42;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none;border:none;cursor:pointer;padding:0;line-height:1;}
 
-/* 播放页竖屏适配（严格对齐 UI 代码包：圆角封面居中 + 进度条 + 控制按钮两端分布） */
-@media (max-width: 820px) {
-  .fs-player .fs-body{flex-direction:column;align-items:center;justify-content:flex-start;gap:18px;padding:18px 22px 24px;text-align:center;flex:1;min-height:0;}
-  .fs-player .fs-disc-wrap{align-self:center;flex-shrink:0;margin-top:6px;}
-  .fs-player .fs-cover{width:200px;height:200px;border-radius:20px;border:none;background:var(--card);box-shadow:0 24px 60px rgba(0,0,0,.5);}
-  .fs-player .fs-cover.empty{width:200px;height:200px;border-radius:28px;align-self:center;}
-  .fs-player .fs-cover .fs-ph{width:100%;height:100%;border-radius:28px;font-size:64px;}
-  .fs-player .fs-cover img{width:100%;height:100%;border-radius:28px;object-fit:cover;}
-  .fs-player .fs-spectrum{width:200px;height:44px;margin-top:12px;}
-  .fs-player .fs-info{width:100%;display:flex;flex-direction:column;flex:1;min-height:0;}
-  .fs-player .fs-title{font-size:18px;margin:14px 0 4px;font-weight:800;}  .fs-player .fs-artist{font-size:13px;color:var(--muted);margin-bottom:6px;}
-  .fs-player .fs-lyric{display:none;} /* 真机主界面不内联歌词，点封面看全屏歌词 */
-  .fs-player .fs-progress{justify-content:space-between;margin:10px 0 2px;}
-  .fs-player .fs-tools{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin:6px 0 2px;}
-  .fs-player .fs-ctrl{justify-content:space-between;width:100%;margin-top:auto;padding-top:10px;} /* 控制按钮两端分布，贴底 */
-  .fs-player .fs-ctrl .icon{width:46px;height:46px;font-size:17px;border:none;border-radius:50%;background:transparent;color:var(--text);display:flex;align-items:center;justify-content:center;flex:none;}
-  .fs-player .fs-ctrl .icon.big{width:48px;height:48px;}
-  .fs-player .fs-ctrl .icon.play{width:76px;height:76px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-color:transparent;box-shadow:0 0 32px color-mix(in srgb,var(--accent) 55%,transparent);font-size:28px;}
-  .fs-player .fs-ctrl .icon[disabled]{opacity:.35;}
-}
+/* 播放页竖屏适配 —— v2.3.11 #1：
+   旧 .fs-player .fs-* 那一套随播放页重写（.pv-*）早已失去对应 DOM，规则无法匹配任何元素，
+   整段移除；现在的横竖屏适配由 .pv-* 自身 + .pv-root 承担。 */
+  /* 原 .fs-player .fs-* 整套规则已无对应 DOM，整段移除，避免 CSS 里留假死亡代码。 */
 
 /* ============ 播放列表页（≡ 打开，全屏，无 VIP）============ */
 .fs-playlist{position:absolute;inset:0;z-index:7;background:var(--bg);display:flex;flex-direction:column;animation:fade .15s;}
@@ -936,32 +935,39 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .lm-name{ font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .lm-sub{ font-size:12px; color:var(--muted); }
 
-/* ============ 本地音乐：全盘搜索主按钮（v2.3.10）============
-   造型为律云自绘：三层同心圆波纹 + 旋转扫描扇形 + 中心音符，
-   配色沿用应用霓虹渐变 #ff5c8a → #7b5cff，不参照任何第三方产品界面。 */
+/* ============ 本地音乐：全盘搜索主按钮（v2.3.11 #3 → A 方案 · 波环扩散）============
+   设计取舍：v2.3.10 的「雷达」（同心圆 + 旋转扇形 + 目标点）气质偏军事/工具，
+   塞进音乐 App 里冲突。A 方案只保留最纯粹的「由内向外扩散」+ 一个全球通识的放大镜。
+   纯图形、按钮上无任何文字；静默态不跑动画（省电），仅扫描时波纹脉冲。 */
 .lm-scan{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; min-height:210px; }
-.lm-scan-btn{ position:relative; width:170px; height:170px; border-radius:50%; border:none; padding:0;
-  background:radial-gradient(circle at 50% 45%, rgba(255,92,138,.16), rgba(255,92,138,.03) 62%, transparent 72%);
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  color:var(--text); cursor:pointer; -webkit-tap-highlight-color:transparent; }
-.lm-scan-btn:active{ transform:scale(.97); }
-.lm-scan-btn:disabled{ cursor:default; }
-.lm-radar{ position:absolute; inset:0; width:170px; height:170px; }
-.lm-radar .ring{ fill:none; stroke:url(#lmRadar); stroke-width:1.6; opacity:.45;
-  transform-box:fill-box; transform-origin:center; }
-.lm-radar .sweep{ transform-origin:60px 60px; animation:lm-sweep 2.6s linear infinite; }
-.lm-radar .note{ fill:none; stroke:var(--accent); stroke-width:2.6; stroke-linecap:round; stroke-linejoin:round; }
-/* 扫描中：扇形转快、波纹向外脉冲 */
-.lm-scan-btn.busy .lm-radar .sweep{ animation-duration:.9s; }
-.lm-scan-btn.busy .lm-radar .ring{ animation:lm-ring 1.8s ease-out infinite; }
-.lm-scan-btn.busy .lm-radar .r2{ animation-delay:.3s; }
-.lm-scan-btn.busy .lm-radar .r3{ animation-delay:.6s; }
-@keyframes lm-sweep{ from{ transform:rotate(0); } to{ transform:rotate(360deg); } }
-@keyframes lm-ring{ 0%{ opacity:.5; transform:scale(.94); } 70%{ opacity:.12; transform:scale(1.05); } 100%{ opacity:.5; transform:scale(.94); } }
-.lm-scan-txt{ position:relative; z-index:1; font-size:17px; font-weight:700; letter-spacing:1px; }
-.lm-scan-num{ position:relative; z-index:1; font-size:30px; font-weight:800; color:var(--accent); font-variant-numeric:tabular-nums; }
-.lm-scan-sub{ font-size:12.5px; color:var(--muted); text-align:center; padding:0 24px; min-height:18px; }
-.lm-scan-dir{ display:block; max-width:270px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lm-pulse{ position:relative; width:170px; height:170px; flex:0 0 auto; }
+/* 三层同心波纹：默认完全透明，.busy 时才启动缩放淡出 */
+.lm-wave{ position:absolute; inset:19px; border-radius:50%; border:1.5px solid rgba(255,92,138,.5); opacity:0; pointer-events:none; }
+.lm-pulse.busy .lm-wave{ animation:lm-pulse 2.6s cubic-bezier(.2,.6,.3,1) infinite; }
+.lm-pulse.busy .lm-wave.w2{ animation-delay:.87s; }
+.lm-pulse.busy .lm-wave.w3{ animation-delay:1.74s; }
+@keyframes lm-pulse{
+  0%{ transform:scale(.80); opacity:.85; }
+  70%{ opacity:.22; }
+  100%{ transform:scale(1.34); opacity:0; }
+}
+/* 主体：132px 渐变实心圆 + 粉色投影 */
+.lm-pulse-core{ position:relative; z-index:1; width:132px; height:132px; margin:19px auto 0; padding:0;
+  border:none; border-radius:50%; cursor:pointer; color:#fff;
+  background:linear-gradient(135deg,#ff5c8a 0%,#a05cff 55%,#7b5cff 100%);
+  box-shadow:0 16px 40px rgba(255,92,138,.30), inset 0 1px 0 rgba(255,255,255,.25);
+  display:grid; place-items:center; transition:box-shadow .3s, transform .12s;
+  -webkit-tap-highlight-color:transparent; }
+.lm-pulse-core:active{ transform:scale(.97); }
+.lm-pulse-core:disabled{ cursor:default; }
+.lm-pulse-core svg{ width:40px; height:40px; opacity:.95; }
+.lm-pulse.busy .lm-pulse-core{ box-shadow:0 16px 52px rgba(255,92,138,.5), inset 0 1px 0 rgba(255,255,255,.3); }
+/* 扫描中：放大镜隐去，改显示已找到的数量（数字是有效信息，不是装饰） */
+.lm-pulse.busy .lm-pulse-core svg{ display:none; }
+.lm-count{ font-size:34px; font-weight:800; letter-spacing:-1px; font-variant-numeric:tabular-nums;
+  line-height:1; color:#fff; text-shadow:0 3px 14px rgba(0,0,0,.35); }
+.lm-scan-sub{ font-size:12.5px; color:var(--muted); text-align:center; padding:0 24px; min-height:18px;
+  max-width:290px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .lm-minor{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
 .lm-minor-btn{ display:flex; align-items:center; gap:6px; padding:9px 14px; border-radius:999px;
   border:1px solid var(--border); background:var(--panel2); color:var(--text); font-size:13px; cursor:pointer; }
@@ -969,6 +975,55 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .lm-minor-btn:disabled{ opacity:.5; cursor:default; }
 .lm-minor-btn.danger{ color:var(--danger); }
 .lm-list{ max-height:38vh; overflow:auto; }
+.lm-item img{ width:100%; height:100%; object-fit:cover; border-radius:9px; }
 @media (prefers-reduced-motion: reduce) {
-  .lm-radar .sweep, .lm-scan-btn.busy .lm-radar .ring{ animation:none; }
+  .lm-pulse.busy .lm-wave{ animation:none; }
 }
+
+/* ============ 扫描结果确认页（v2.3.11 #6）============
+   补上「扫描 → 入库」之间缺失的一步：先让用户看清扫到了什么、哪些是新的、
+   哪些被当重复滤掉了，再勾选后一次性加入曲库。 */
+.scan-result{ display:flex; flex-direction:column; height:100%; min-height:0; }
+.sr-top{ display:flex; align-items:center; gap:10px; padding:2px 0 12px; }
+.sr-top .icon{ width:22px; height:22px; background:transparent; border:none; color:var(--text);
+  display:flex; align-items:center; justify-content:center; flex:0 0 auto; cursor:pointer; }
+.sr-title{ font-size:18px; font-weight:700; flex:1; }
+.sr-all{ background:transparent; border:none; color:var(--accent); font-size:13.5px; cursor:pointer; padding:4px 2px; }
+/* 三个关键数字 */
+.sr-stats{ display:flex; border:1px solid var(--border); border-radius:14px; overflow:hidden; background:var(--panel); }
+.sr-stat{ flex:1; text-align:center; padding:12px 4px; border-right:1px solid var(--border); }
+.sr-stat:last-child{ border-right:none; }
+.sr-stat b{ display:block; font-size:20px; font-weight:800; line-height:1.2; font-variant-numeric:tabular-nums; }
+.sr-stat small{ font-size:11px; color:var(--muted); }
+.sr-stat.c1 b{ color:var(--text); }
+.sr-stat.c2 b{ color:#e8b059; }
+.sr-stat.c3 b{ color:var(--muted); }
+.sr-hint{ margin-top:10px; padding:9px 12px; border-radius:10px; font-size:12.5px; line-height:1.5;
+  background:rgba(91,212,138,.10); border:1px solid rgba(91,212,138,.28); color:#9bdec0; }
+.sr-hint b{ color:#c8f0dd; }
+.sr-hint.warn{ margin-top:8px; background:rgba(232,176,89,.10); border-color:rgba(232,176,89,.3); color:#e8c68a; }
+.sr-list{ flex:1; min-height:0; overflow:auto; margin-top:10px; display:flex; flex-direction:column; gap:2px;
+  overscroll-behavior-y:contain; }
+.sr-empty{ padding:34px 12px; text-align:center; line-height:1.7; }
+.sr-row{ display:flex; align-items:center; gap:10px; padding:9px 8px; border-radius:10px; cursor:pointer; }
+.sr-row:active{ background:var(--panel2); }
+.sr-tick{ width:17px; height:17px; border-radius:5px; border:1.5px solid var(--border); flex:0 0 auto;
+  position:relative; transition:.15s; }
+.sr-tick.on{ background:linear-gradient(135deg,#ff5c8a,#7b5cff); border-color:transparent; }
+.sr-tick.on::after{ content:''; position:absolute; left:4.5px; top:1.5px; width:5px; height:9px;
+  border-right:2px solid #fff; border-bottom:2px solid #fff; transform:rotate(42deg); }
+.sr-cov{ width:38px; height:38px; border-radius:9px; flex:0 0 auto; display:grid; place-items:center;
+  color:#fff; font-size:14px; font-weight:700; overflow:hidden; }
+.sr-cov img{ width:100%; height:100%; object-fit:cover; }
+.sr-meta{ flex:1; min-width:0; display:flex; flex-direction:column; }
+.sr-name{ font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sr-sub{ font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* 底部操作条 */
+.sr-actions{ display:flex; align-items:center; gap:10px; padding-top:12px; flex:0 0 auto; }
+.sr-ghost{ border:1px solid var(--border); background:var(--panel2); color:var(--muted);
+  border-radius:10px; padding:10px 14px; font-size:13px; cursor:pointer; }
+.sr-ghost:disabled{ opacity:.45; cursor:default; }
+.sr-cta{ flex:1; border:none; border-radius:11px; padding:12px; font-size:14px; font-weight:700; color:#fff;
+  cursor:pointer; background:linear-gradient(135deg,#ff5c8a,#7b5cff);
+  box-shadow:0 10px 26px rgba(255,92,138,.30); }
+.sr-cta:disabled{ opacity:.45; cursor:default; box-shadow:none; }

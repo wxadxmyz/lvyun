@@ -3,6 +3,7 @@ import { readDir } from '@tauri-apps/plugin-fs';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { homeDir } from '@tauri-apps/api/path';
 import { MediaItem } from '../engine/types';
+import { readTagsBatch } from './id3';
 
 // 本地音乐：让用户手动选择文件夹（权限少、可控），递归扫描常见音频格式，
 // 通过 Tauri 的 convertFileSrc 转为 WebView 可直接播放的 asset 地址。
@@ -84,6 +85,42 @@ export function toMediaItems(files: { path: string; name: string }[], startIndex
   }));
 }
 
+/**
+ * v2.3.11 #6b：带 ID3 标签的版本。
+ *
+ * 旧实现在这里直接把文件名当歌名、把歌手硬编码成字符串「本地音乐」，
+ * 于是「01 - 周杰伦 - 稻香.mp3」这种文件在列表里整串显示成歌名，还不读标签。
+ * 现在逐文件解析 ID3（只读文件头，见 lib/id3.ts），拿不到才退回文件名猜测。
+ *
+ * @param onTick 解析进度回调，用于在按钮上显示「正在读取标签 128/1050」
+ */
+export async function toMediaItemsWithTags(
+  files: { path: string; name: string }[],
+  startIndex = 0,
+  onTick?: (done: number, total: number) => void,
+): Promise<{ items: MediaItem[]; tagged: number }> {
+  const tags = await readTagsBatch(files, onTick);
+  let tagged = 0;
+  const items: MediaItem[] = files.map((f, i) => {
+    const t = tags[i] ?? {};
+    // 「识别出标签」的判定：至少拿到了歌名或歌手，而且不是靠文件名兜出来的
+    if (t.artist) tagged++;
+    return {
+      id: 'local-' + (startIndex + i) + '-' + f.path,
+      sourceId: 'local',
+      sourceName: '本地音乐',
+      title: t.title || f.name.replace(/\.[^.]+$/, ''),
+      artist: t.artist || '未知艺人',
+      album: t.album,
+      year: t.year,
+      duration: t.duration,
+      mediaType: 'music' as const,
+      playUrl: convertFileSrc(f.path),
+    };
+  });
+  return { items, tagged };
+}
+
 /* ---------------------------------------------------------------------------
  * 全盘搜索
  * -------------------------------------------------------------------------
@@ -115,6 +152,17 @@ export interface ScanProgress {
   found: number;
   dir: string;
   done: boolean;
+  /** 本次扫描中因扩展名不支持而跳过的文件数（仅作提示，不代表错误） */
+  skipped: number;
+}
+
+/** 扫描结果：文件列表 + 统计，供「扫描结果确认页」展示 */
+export interface ScanFiles {
+  files: { path: string; name: string }[];
+  /** 目录遍历中发现、但扩展名不在支持列表的文件数 */
+  unsupported: number;
+  /** 是否因达到 SCAN_MAX_FILES 上限而提前收尾 */
+  truncated: boolean;
 }
 
 async function candidateRoots(): Promise<string[]> {
@@ -143,14 +191,22 @@ async function candidateRoots(): Promise<string[]> {
  * 扫描设备上的常见音乐目录，带进度回调。
  * 会周期性让出主线程，保证扫描动画不卡住。
  */
-export async function scanPublicDirs(onProgress?: (p: ScanProgress) => void): Promise<{ path: string; name: string }[]> {
+export async function scanPublicDirs(
+  onProgress?: (p: ScanProgress) => void,
+): Promise<ScanFiles> {
   const roots = await candidateRoots();
   const out: { path: string; name: string }[] = [];
   const seen = new Set<string>();
   let lastYield = Date.now();
+  let skipped = 0;
+  let truncated = false;
 
   const walk = async (dir: string, depth: number): Promise<void> => {
-    if (depth > SCAN_MAX_DEPTH || out.length >= SCAN_MAX_FILES) return;
+    if (depth > SCAN_MAX_DEPTH) return;
+    if (out.length >= SCAN_MAX_FILES) {
+      truncated = true;
+      return;
+    }
     let entries: any[];
     try {
       entries = await readDir(dir);
@@ -158,7 +214,10 @@ export async function scanPublicDirs(onProgress?: (p: ScanProgress) => void): Pr
       return; // 无权限 / 不存在，静默跳过
     }
     for (const e of entries) {
-      if (out.length >= SCAN_MAX_FILES) return;
+      if (out.length >= SCAN_MAX_FILES) {
+        truncated = true;
+        return;
+      }
       const full = dir.endsWith('/') ? dir + e.name : dir + '/' + e.name;
       if (e.isDirectory) {
         await walk(full, depth + 1);
@@ -167,37 +226,31 @@ export async function scanPublicDirs(onProgress?: (p: ScanProgress) => void): Pr
           seen.add(full);
           out.push({ path: full, name: e.name });
         }
+      } else {
+        // v2.3.11 #6：不计入错误，但在结果页如实告诉用户「有多少个文件被跳过」，
+        // 否则用户会以为「我明明有一堆歌，怎么只扫到这么点」。
+        skipped++;
       }
     }
     if (Date.now() - lastYield > 120) {
       lastYield = Date.now();
-      onProgress?.({ found: out.length, dir, done: false });
+      onProgress?.({ found: out.length, dir, done: false, skipped });
       await new Promise((r) => setTimeout(r, 0)); // 让出主线程
     }
   };
 
   for (const r of roots) {
-    onProgress?.({ found: out.length, dir: r, done: false });
+    onProgress?.({ found: out.length, dir: r, done: false, skipped });
     await walk(r, 0);
-    if (out.length >= SCAN_MAX_FILES) break;
+    if (out.length >= SCAN_MAX_FILES) {
+      truncated = true;
+      break;
+    }
   }
-  onProgress?.({ found: out.length, dir: '', done: true });
-  return out;
+  onProgress?.({ found: out.length, dir: '', done: true, skipped });
+  return { files: out, unsupported: skipped, truncated };
 }
 
-/** 保留原调用方式（直接选中后播放），内部已支持安卓降级 */
-export async function scanLocalMusic(onPlay: (items: MediaItem[]) => void, push: (t: string) => void) {
-  try {
-    push('正在选择音乐…');
-    const files = await pickAudioFiles('auto');
-    if (files.length === 0) {
-      push('未选择或没有找到音乐文件');
-      return;
-    }
-    const items = toMediaItems(files);
-    onPlay(items);
-    push(`已导入 ${items.length} 首本地音乐`);
-  } catch (e: any) {
-    push('扫描失败：' + (e?.message || String(e)));
-  }
-}
+// v2.3.11 #6：删除死代码 scanLocalMusic()。
+// 它是早期的「选完直接播」入口，全库已无任何调用方（本地音乐三套机制收敛到
+// library.addLocalMusic 之后更无保留价值），留着只会让下一个人以为还有别的路径。

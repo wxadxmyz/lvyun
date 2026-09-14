@@ -5,6 +5,7 @@ import { ThemeProvider } from '../lib/theme';
 import { ToastProvider } from '../lib/toast';
 import { installSafeAreaFallback } from '../lib/safeArea';
 import { installNavBarSync } from '../lib/navBar';
+import { initSpiderDebug } from '../lib/debug';
 import '../styles.css';
 
 // #8：沉浸式下部分 WebView 的 env(safe-area-inset-top) 返回 0，
@@ -12,6 +13,8 @@ import '../styles.css';
 installSafeAreaFallback();
 // v2.3.10：把 --bg 同步给 Android 系统导航栏，消除底部手势条的灰色罩层。
 installNavBarSync();
+// v2.3.11 #2：订阅 Rust 沙箱推来的 spider 日志，让调试面板也能看到 JS 源的请求。
+void initSpiderDebug();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
