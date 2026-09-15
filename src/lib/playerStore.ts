@@ -105,9 +105,9 @@ function emit() {
   for (const l of listeners) l();
 }
 
-function setState(patch: Partial<PlayerState>) {
+function setState(patch: Partial<PlayerState>, skipPersist = false) {
   state = { ...state, ...patch };
-  persistSoon();
+  if (!skipPersist) persistSoon();
   emit();
 }
 
@@ -259,15 +259,16 @@ export const player = {
   },
 
   seek(t: number) {
-    setState({ progress: t });
+    // progress 不持久化（由 <audio> 重建），跳过落盘避免高频写
+    setState({ progress: t }, true);
     if (audioElRef) audioElRef.currentTime = t;
     if (videoElRef) videoElRef.currentTime = t;
   },
   setDuration(d: number) {
-    if (d !== state.duration) setState({ duration: d });
+    if (d !== state.duration) setState({ duration: d }, true);
   },
   setProgress(p: number) {
-    if (Math.abs(p - state.progress) > 0.25) setState({ progress: p });
+    if (Math.abs(p - state.progress) > 0.25) setState({ progress: p }, true);
   },
   setVolume(v: number) {
     setState({ volume: v, muted: v === 0 });
