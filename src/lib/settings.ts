@@ -23,7 +23,6 @@ export interface AppSettings {
   swipeGesture: boolean; // 上下滑切歌手势
   sleepTimer: number; // 睡眠定时（分钟，0=关闭）
   sleepEnd: boolean; // 睡眠定时：播完本曲后停止
-  blurCover: boolean; // 封面模糊背景
   // v2.3.0 加密源解密（E5）：调用第三方解密端点还原加密接口（如饭太硬 jiemi.php）
   decryptEnabled: boolean; // 是否启用服务端解密
   decryptEndpoint: string; // 解密端点地址（可在设置里改/关）
@@ -58,7 +57,6 @@ const DEFAULTS: AppSettings = {
   swipeGesture: true,
   sleepTimer: 0,
   sleepEnd: false,
-  blurCover: true,
   decryptEnabled: true,
   decryptEndpoint: DEFAULT_DECRYPT_ENDPOINT,
   toplistUrl: undefined,

@@ -402,8 +402,8 @@ export function FullScreenPlayer({
     // 原因：.pv-root 是 z-index:60 的层叠上下文，而底部导航 .bottom-nav 是 z-index:70
     // 且位于 .pv-root 之外 —— 父容器整体在 Tab 之下，内部子元素无论 z-index 多大
     // 都会被 Tab 盖住（3 点菜单贴底弹出，最后几行正好落在 Tab 区域，被切掉一半）。
-    // 另：.pv-player 内的 .pv-blur 带 filter:blur(40px)，filter 会创建新的层叠上下文，
-    // 使子元素的 position:fixed 失效 —— 所以菜单必须提到 .pv-root 同级才稳。
+    // 另：菜单提到 .pv-root 同级，可避开 .pv-player 内部层叠上下文对子元素
+    // position:fixed 的约束，确保浮层能稳定浮在底部导航 .bottom-nav(z-index:70) 之上。
     <>
       {/* v2.3.11 #1：根节点由 .fs-player 改为 .pv-root。
           播放页在 MusicApp 里已移出 <main>，不再继承 .main 的移动端三边内边距，
@@ -425,16 +425,6 @@ export function FullScreenPlayer({
     >
       {/* ===== 主界面：1:1 对齐设计稿 ⑤「未在播放」/ ⑥「播放中」===== */}
       <div className="pv-player">
-        {/* 封面泛光（设计稿 .blur；有封面时优先用封面色） */}
-        <div
-          className="pv-blur"
-          style={
-            it.cover
-              ? { backgroundImage: `url(${it.cover})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.42 }
-              : undefined
-          }
-        />
-
         {/* 顶栏：汉堡 22px | 正 在 播 放 12px/字距2 | 竖三点 22px */}
         <div className="pv-top">
           <button className="pv-mi" onClick={() => setShowPlaylist(true)} title="播放列表" aria-label="播放列表">{IC.menu}</button>
@@ -539,7 +529,7 @@ export function FullScreenPlayer({
         <div className="ld-page">
           <div className="ld-top">
             <button className="ld-back" onClick={() => setCoverLyric(false)} aria-label="返回">
-              <Icon name="arrow-left" size={26} />
+              <Icon name="arrow-left" size={30} />
             </button>
             <div className="ld-head">
               <div className="ld-title">{it.title || '未在播放'}</div>
@@ -622,7 +612,7 @@ export function FullScreenPlayer({
       {showPlaylist && (
         <div className="fs-playlist">
           <div className="fs-pl-head">
-            <button className="icon" onClick={() => setShowPlaylist(false)} aria-label="返回"><Icon name="arrow-left" size={26} /></button>
+            <button className="icon" onClick={() => setShowPlaylist(false)} aria-label="返回"><Icon name="arrow-left" size={30} /></button>
             <span className="pl-title">播放列表</span>
             {/* v2.4.5 #1：与底部按钮走同一个 cycleMode（带 toast），不再各写一套 */}
             <button className="pl-mode" onClick={cycleMode} title={MODE_LABEL[state.mode] ?? '循环模式'}>
@@ -723,7 +713,7 @@ export function FullScreenPlayer({
             className="fs-land-back"
             onClick={(e) => { e.stopPropagation(); setShowLandscape(false); }}
             aria-label="退出横屏"
-          ><Icon name="arrow-left" size={24} /></button>
+          ><Icon name="arrow-left" size={30} /></button>
           <div className="fs-land-bg">
             <div className="fs-land-orb a" />
             <div className="fs-land-orb b" />
@@ -742,6 +732,14 @@ export function FullScreenPlayer({
               ) : (
                 <p className="ld-empty">暂无歌词 / 该音源未提供歌词</p>
               )}
+            </div>
+            {/* v2.4.7 #4：横屏控制行 —— 上一曲 / 暂停·播放 / 下一曲（此前横屏只有进度条，无按钮） */}
+            <div className="fs-land-ctrls" onClick={(e) => e.stopPropagation()}>
+              <button className="fs-land-ctrl" onClick={() => player.prev()} title="上一曲" aria-label="上一曲">{IC.prev}</button>
+              <button className="fs-land-ctrl play" onClick={() => player.toggle()} title={state.isPlaying ? '暂停' : '播放'} aria-label={state.isPlaying ? '暂停' : '播放'}>
+                {state.isPlaying ? IC.pause : IC.play}
+              </button>
+              <button className="fs-land-ctrl" onClick={() => player.next()} title="下一曲" aria-label="下一曲">{IC.next}</button>
             </div>
             <div className="fs-land-bar" onClick={(e) => e.stopPropagation()}>
               <div className="fs-land-fill" style={{ width: `${pct}%` }} />

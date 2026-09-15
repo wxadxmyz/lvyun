@@ -375,7 +375,7 @@ button.fav, .fav { color: var(--danger) !important; }
 .icon:hover { border-color: var(--accent); }
 .icon.active { border-color: var(--accent); color: var(--accent); }
 .fullpage-head .icon { border-radius: 12px; flex: 0 0 auto; align-self: center; display: inline-flex; align-items: center; justify-content: center; padding: 0; } /* 返回按钮：图标垂直居中 */
-.fullpage-head .icon svg { display: block; margin: auto; }
+.fullpage-head .icon svg { display: block; flex: none; margin: auto; }
 .icon.play { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border: none; width: 44px; height: 44px; font-size: 16px; }
 .vp-progress .t, .fs-progress .t { font-size: 12px; color: var(--muted); min-width: 38px; text-align: center; }
 input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor: pointer; }
@@ -533,7 +533,7 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
   /* v2.4.2 #B：播放页自身的顶部遮挡条（对齐幕海 .player-root::before）。
      状态栏在 edge-to-edge 下浮在内容之上、不占布局空间，必须用一条与 --bg 同色的
      固定条把「状态栏那条区域」垫成纯背景色；否则状态栏半透明层会压在封面泛光/内容上。
-     z-index:2 高于 .pv-blur(0) 与 .pv-player 内容(1)，但高度只有 var(--sat)，
+     z-index:2 高于 .pv-player 内容(1)，但高度只有 var(--sat)，
      顶栏在 .pv-player 的 padding-top 之下、不会被它盖住。 */
   .pv-root::before { content: ''; position: fixed; left: 0; right: 0; top: 0;
     height: var(--sat, 26px); background: var(--bg); z-index: 2; pointer-events: none; }
@@ -644,11 +644,6 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
 .pv-player{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column; align-items:center;
   padding:calc(6px + var(--sat)) 20px calc(14px + var(--tabbar) + var(--sab)); overflow:hidden; }
 .pv-player > *{ position:relative; z-index:1; width:100%; }
-/* 封面泛出的模糊光晕（设计稿 .player .blur：双 radial-gradient + blur40 + opacity .5） */
-.pv-blur{ position:absolute; z-index:0 !important; inset:-40px; width:auto !important; height:auto !important;
-  filter:blur(40px); opacity:.5; pointer-events:none;
-  background:radial-gradient(circle at 30% 20%, var(--accent), transparent 60%),
-             radial-gradient(circle at 80% 90%, #3a2440, transparent 55%); }
 .pv-top{ display:flex; align-items:center; justify-content:space-between; color:#dcdce2; margin-bottom:10px; flex:none; }
 .pv-mi{ width:22px; height:22px; flex:none; padding:0; border:none; background:transparent; color:inherit;
   display:flex; align-items:center; justify-content:center; cursor:pointer; }
@@ -842,7 +837,7 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .fs-pl-head{display:flex;align-items:center;gap:12px;padding:calc(14px + var(--sat)) 16px 12px;border-bottom:1px solid var(--border);}
 /* v2.4.5 #3：返回箭头 20 → 24px；圈同步到 40px。此前只放大圈不放大图标，图标在圈里显得又小又空。 */
 .fs-pl-head .icon{ width:40px; height:40px; border-radius:50%; background:var(--panel2); display:flex; align-items:center; justify-content:center; }
-.fs-pl-head .icon svg{ width:24px; height:24px; display:block; margin:auto; }
+.fs-pl-head .icon svg{ width:24px; height:24px; display:block; flex:none; margin:auto; }
 .fs-pl-head .pl-title{font-size:17px;font-weight:700;flex:1;}
 .fs-pl-head .pl-mode{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:999px;padding:6px 14px;font-size:13px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;}
 .fs-pl-list{flex:1;overflow:auto;padding:8px 12px;}
@@ -879,7 +874,7 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
    此前它只吃移动端 .icon{42px} 却无对应 svg 尺寸，导致「圈 42 / 图 22」缩在圈里。
    这里显式锁定 36px 圈 + 20px 图标并居中，脱离移动端 .icon{42px} 的影响。 */
 .fs-sheet-head .icon{width:38px;height:38px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex:0 0 auto;padding:0;color:var(--text);}
-.fs-sheet-head .icon svg{width:24px;height:24px;display:block;margin:auto;}
+.fs-sheet-head .icon svg{width:24px;height:24px;display:block;flex:none;margin:auto;}
 .fs-sheet-head .sh-title{font-size:16px;font-weight:700;flex:1;}
 .fs-sheet-row{display:flex;align-items:center;gap:14px;width:100%;background:transparent;border:none;color:var(--text);padding:14px 10px;border-radius:12px;font-size:15px;text-align:left;cursor:pointer;}
 .fs-sheet-row:hover{background:var(--panel2);}
@@ -980,12 +975,12 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 /* ============ 横屏模式（整界面横置沉浸）============ */
 .fs-land{ position:absolute; inset:0; z-index:10; display:flex; flex-direction:column; overflow:hidden; background:linear-gradient(120deg,#0e0c12,#15101b); animation:fade .2s; }
 .fs-land-back{ position:absolute; top:calc(12px + var(--sat)); left:16px; z-index:3; width:42px; height:42px; border-radius:50%; background:rgba(255,255,255,.1); border:none; color:var(--text); display:flex; align-items:center; justify-content:center; cursor:pointer; }
-.fs-land-back svg{ width:24px; height:24px; display:block; margin:auto; }
+.fs-land-back svg{ width:24px; height:24px; display:block; flex:none; margin:auto; }
 .fs-land-bg{ position:absolute; inset:-40px; z-index:0; }
-.fs-land-orb{ position:absolute; border-radius:50%; filter:blur(70px); opacity:.5; animation:land-drift 16s ease-in-out infinite; }
-.fs-land-orb.a{ width:300px; height:300px; background:var(--accent); left:4%; top:8%; }
-.fs-land-orb.b{ width:360px; height:360px; background:var(--accent2); right:2%; bottom:6%; animation-delay:-5s; }
-.fs-land-orb.c{ width:240px; height:240px; background:#38bdf8; left:42%; top:48%; animation-delay:-9s; opacity:.32; }
+.fs-land-orb{ position:absolute; border-radius:50%; filter:blur(80px); opacity:.55; animation:land-drift 16s ease-in-out infinite; }
+.fs-land-orb.a{ width:520px; height:520px; background:var(--accent); left:-8%; top:-18%; }
+.fs-land-orb.b{ width:620px; height:620px; background:var(--accent2); right:-10%; bottom:-22%; animation-delay:-5s; }
+.fs-land-orb.c{ width:460px; height:460px; background:#38bdf8; left:34%; top:30%; animation-delay:-9s; opacity:.3; }
 @keyframes land-drift{ 0%,100%{ transform:translate(0,0) scale(1); } 33%{ transform:translate(26px,-18px) scale(1.08); } 66%{ transform:translate(-18px,22px) scale(.95); } }
 /* v2.4.0 H1：横屏去封面，整块给歌词；上 歌名歌手 / 中 歌词 / 下 进度条 */
 .fs-land-content{ position:relative; z-index:1; flex:1; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:calc(64px + var(--sat)) calc(28px + var(--sar)) calc(28px + var(--sab)) calc(28px + var(--sal)); transition:opacity .4s; }
@@ -995,8 +990,15 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .fs-land-bar{ width:100%; max-width:760px; height:4px; border-radius:4px; background:rgba(255,255,255,.14); position:relative; margin-top:6px; overflow:hidden; }
 .fs-land-fill{ position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg,var(--accent),var(--accent2)); border-radius:4px; }
 .fs-land-times{ display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-top:6px; }
-/* 3 秒自动隐藏：chrome 淡出，只剩当前行歌词 */
-.fs-land.hidden .fs-land-content, .fs-land.hidden .fs-land-back { opacity:0; pointer-events:none; }
+/* v2.4.7 #4：横屏控制行（上一曲 / 暂停·播放 / 下一曲）—— 此前横屏只有进度条 */
+.fs-land-ctrls{ display:flex; align-items:center; justify-content:center; gap:42px; flex:none; }
+.fs-land-ctrl{ width:54px; height:54px; border-radius:50%; border:none; background:rgba(255,255,255,.14); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.fs-land-ctrl.play{ width:66px; height:66px; background:linear-gradient(135deg,var(--accent),var(--accent2)); }
+.fs-land-ctrl svg{ width:24px; height:24px; display:block; fill:currentColor; }
+.fs-land-ctrl.play svg{ width:30px; height:30px; }
+/* 3 秒自动隐藏：标题/歌词 chrome 淡出，只剩当前行歌词；
+   但返回键(.fs-land-back)始终常驻，保证任何时刻都能退出横屏。 */
+.fs-land.hidden .fs-land-content { opacity:0; pointer-events:none; }
 /* 隐藏态独立层：当前行居正中、加大 */
 .ld-solo{ position:absolute; inset:0; z-index:2; display:flex; align-items:center; justify-content:center; padding:0 12%; text-align:center;
   font-size:29px; font-weight:800; line-height:1.4; color:transparent;
@@ -1006,7 +1008,7 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .ld-page{ position:absolute; inset:0; z-index:9; background:var(--bg); display:flex; flex-direction:column; animation:fade .2s; }
 .ld-top{ display:flex; align-items:center; gap:10px; padding:calc(12px + var(--sat)) 16px 10px; flex:none; }
 .ld-back{ width:38px; height:38px; flex:none; border:none; background:transparent; color:var(--text); display:flex; align-items:center; justify-content:center; cursor:pointer; }
-.ld-back svg{ width:24px; height:24px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
+.ld-back svg{ width:24px; height:24px; flex:none; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
 .ld-head{ min-width:0; text-align:center; flex:1; }
 .ld-title{ font-size:16px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ld-sub{ font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -1140,7 +1142,7 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
    旧实现吃全局 `.icon svg{20px}`：圈放大到 42px 而图标没跟上，
    加上 SVG viewBox 自带留白，小尺寸下就表现为「图标不在圆圈中间」。 */
 .fullpage-head .icon svg,
-.fs-author-head .icon svg { width: 24px; height: 24px; display: block; margin: auto; }
+.fs-author-head .icon svg { width: 24px; height: 24px; display: block; flex: none; margin: auto; }
 .fs-author-head .icon{
   width:40px; height:40px; border-radius:50%; padding:0;
   display:grid; place-items:center;
@@ -1212,6 +1214,12 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 body.landscape-on .bottom-nav{ display:none !important; }
 body.landscape-on .pv-root::before,
 body.landscape-on .pv-statusbar{ display:none !important; }
+/* v2.4.7 #3：横屏控制从移动端媒体查询解绑，改由 body.landscape-on 直接掌管。
+   横屏时视口宽 >820px，@media(max-width:820px) 里的 .main.player-open{display:none}
+   与 .pv-root{fixed;inset:0} 同时失效 → 底层页重显、播放层退回桌面双栏，
+   旋转校验空窗里看到的正是底层页。下面两条让横屏立即生效，空窗消失。 */
+body.landscape-on .main.player-open{ display:none !important; }
+body.landscape-on .pv-root{ position:fixed; inset:0; z-index:60; background:var(--bg); }
 /* 横屏内容区：上下只留安全区 + 一点呼吸位，让进度条真正贴近底边 */
 body.landscape-on .fs-land-content{
   padding: calc(52px + var(--sat)) calc(28px + var(--sar)) calc(12px + var(--sab)) calc(28px + var(--sal));
@@ -1219,9 +1227,9 @@ body.landscape-on .fs-land-content{
 }
 body.landscape-on .fs-land-head{ margin-top:auto; }
 body.landscape-on .fs-land-bar{ margin-top:auto; }
-/* 横屏返回键：加大到 48px 圈 + 26px 图标（用户反馈"返回按钮要大一点"） */
+/* 横屏返回键：加大到 56px 圈 + 30px 图标（用户反馈"返回按钮要大一点"） */
 body.landscape-on .fs-land-back{ width:48px; height:48px; background:rgba(0,0,0,.42); backdrop-filter:blur(8px); }
-body.landscape-on .fs-land-back svg{ width:26px; height:26px; stroke-width:2.1; }
+body.landscape-on .fs-land-back svg{ width:30px; height:30px; stroke-width:2.1; }
 /* 横屏层 z-index 78 高于原菜单值 76 —— 菜单已在上方统一抬到 92（见 .fs-menu-mask）。 */
 
 /* #15（原 v2.5.0 #7）：播放页顶栏配色加深。
@@ -1314,9 +1322,9 @@ body.landscape-on .fs-land-back svg{ width:26px; height:26px; stroke-width:2.1; 
   max-width:100%; max-height:100%;
   border-radius:24px; margin:0;
 }
-/* 标题/歌手紧跟封面下方，不再额外拉开距离（留白交给 .pv-art-slot 分配） */
+/* 标题/歌手紧跟封面下方；歌手与进度条之间留呼吸位（用户反馈"紧挨进度条不好看"） */
 .pv-player .pv-title{ margin-top:14px; }
-.pv-player .pv-artist{ margin-top:5px; }
+.pv-player .pv-artist{ margin-top:5px; margin-bottom:40px; }
 
 /* 矮屏（含软键盘弹起、横屏小窗）：等比缩小，保证控制区不被挤出屏幕 */
 @media (max-height: 700px){
@@ -1334,13 +1342,13 @@ body.landscape-on .fs-land-back svg{ width:26px; height:26px; stroke-width:2.1; 
    （此前 JSX 里漏传 size，图标一直在用默认 22，CSS 的 24 只作用于 svg 元素；
      现在 JSX 显式传 26，两边一致，不会再出现"改了没效果"。）
    ========================================================================== */
-.fs-pl-head .icon{ width:44px; height:44px; border-radius:50%; }
-.fs-pl-head .icon svg{ width:26px; height:26px; stroke-width:2.1; }
+.fs-pl-head .icon{ width:40px; height:40px; border-radius:50%; }
+.fs-pl-head .icon svg{ width:30px; height:30px; stroke-width:2.1; }
 
 /* ==========================================================================
    v2.4.6 #6：横屏模式返回键同步放大（用户第 4 张图反馈"返回按钮要大一点"）
    ========================================================================== */
-.ld-back svg{ width:26px; height:26px; stroke-width:2.1; }
+.ld-back svg{ width:30px; height:30px; stroke-width:2.1; }
 
 /* v2.4.6 #7：PromptDialog 确认模式的说明文字 + 弹窗内边距校正 */
 .prompt-dialog{ width:min(86vw, 340px); }
