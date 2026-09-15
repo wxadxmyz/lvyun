@@ -190,9 +190,11 @@ export function createJsSource(cfg: SourceConfig): MediaSource {
       // 兼容两种调用：传 MediaItem（推荐，含 id/title）或只传 id 字符串
       const obj: any = typeof item === 'string' ? { id: item } : item;
       const id = String(obj?.id ?? '');
-      // spider 里常写 i.title / i.name，这里一次性补齐，避免源侧拿不到歌名
+      // 注意：Rust 侧 args 是「字符串数组」，会原样展开成 func(...args) —— 传不了对象。
+      // 因此这里把 {id,title,name} 序列化成 JSON 字符串传入，源侧用 JSON.parse 解开。
+      // 为兼容老式只接受裸 id 的源，同时也把 id 作为第 2 个参数传入。
       const payload = { id, title: obj?.title ?? obj?.name ?? '', name: obj?.name ?? obj?.title ?? '' };
-      const data = await call('lyric', [JSON.stringify(payload)]);
+      const data = await call('lyric', [JSON.stringify(payload), id]);
       // 解包：{ lyric: x } / { lrc: x } / 裸值
       let raw = data?.lyric ?? data?.lrc ?? data;
       if (typeof raw !== 'string' && !Array.isArray(raw)) {
