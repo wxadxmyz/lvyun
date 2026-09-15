@@ -37,6 +37,7 @@ export default function MusicApp() {
 
   const [tab, setTab] = useState<Tab>('home');
   const [fromTab, setFromTab] = useState<Tab>('home'); // 进入播放页前的 tab，返回时回到这里而非固定主页
+  const [fromSearch, setFromSearch] = useState(false); // v2.4.8 #7：是否从搜索浮层进入播放页
   const [searchOpen, setSearchOpen] = useState(false);
   const [myMusic, setMyMusic] = useState<null | 'favorites' | 'playlists'>(null);
   const [showDebug, setShowDebug] = useState(false);
@@ -47,7 +48,11 @@ export default function MusicApp() {
 
   // 统一切 tab：进入播放页时记忆来源 tab，供系统返回手势回退到上一级
   const goTab = (t: Tab) => {
-    if (t === 'player') setFromTab(tab);
+    if (t === 'player') {
+      setFromTab(tab);
+      // v2.4.8 #7：记住「是不是从搜索浮层点歌进的播放页」，返回时据此回到搜索浮层
+      setFromSearch(searchOpen);
+    }
     setTab(t);
   };
 
@@ -90,15 +95,22 @@ export default function MusicApp() {
   const navRef = useRef({
     tab: 'home' as Tab,
     fromTab: 'home' as Tab,
+    fromSearch: false,
   });
-  navRef.current = { tab, fromTab };
+  navRef.current = { tab, fromTab, fromSearch };
 
   const handleBack = (): boolean => {
     // 1) 先问栈：已挂载的浮层/子页各自决定是否消费
     if (dispatchBack()) return true;
-    // 2) 栈空 → 外层分级：播放页回到来源 tab，其它 tab 回到主页
     const s = navRef.current;
-    if (s.tab === 'player') { setTab(s.fromTab); return true; }
+    // 2) v2.4.8 #7：播放页返回时，若它是由「搜索浮层」点歌进入的，优先回到搜索浮层
+    //    （而不是回到底层 tab）。对齐主流 App「搜歌试听 → 返回继续搜」的预期。
+    if (s.tab === 'player') {
+      if (s.fromSearch) { setSearchOpen(true); setTab(s.fromTab); return true; }
+      setTab(s.fromTab);
+      return true;
+    }
+    // 3) 栈空 → 外层分级：其它 tab 回到主页
     if (s.tab !== 'home') { setTab('home'); return true; }
     return false; // 已经在主页 → 交给系统退出
   };

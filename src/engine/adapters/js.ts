@@ -177,6 +177,45 @@ export function createJsSource(cfg: SourceConfig): MediaSource {
       }
     },
 
+    /**
+     * v2.4.8 #1：歌词通道。
+     * spider 的 lyric(i) 有多套常见返回约定，这里统一归一化：
+     *   1) { lyric: '<base64>' }      —— 酷狗系（krcs/lyrics.kugou 返回 base64 LRC）
+     *   2) { lyric: '<lrc 原文>' }    —— 直接给 LRC 文本
+     *   3) { lyric: ['行1','行2'] }   —— 纯文本行数组（无时间轴）
+     *   4) 裸字符串 base64 / LRC
+     * 参数同时带上 id 与 title/name，兼容不同 spider 的取值习惯。
+     */
+    async getLyric(item: MediaItem | string) {
+      // 兼容两种调用：传 MediaItem（推荐，含 id/title）或只传 id 字符串
+      const obj: any = typeof item === 'string' ? { id: item } : item;
+      const id = String(obj?.id ?? '');
+      // spider 里常写 i.title / i.name，这里一次性补齐，避免源侧拿不到歌名
+      const payload = { id, title: obj?.title ?? obj?.name ?? '', name: obj?.name ?? obj?.title ?? '' };
+      const data = await call('lyric', [JSON.stringify(payload)]);
+      // 解包：{ lyric: x } / { lrc: x } / 裸值
+      let raw = data?.lyric ?? data?.lrc ?? data;
+      if (typeof raw !== 'string' && !Array.isArray(raw)) {
+        if (raw == null) return '';
+        raw = String(raw);
+      }
+      if (Array.isArray(raw)) return raw.map((t: any) => String(t));
+      const s = raw as string;
+      if (!s) return '';
+      // 判断是否 base64：酷狗歌词接口返回的是 base64 编码的 LRC。
+      // 用「是否含 LRC 时间轴标记」做判据 —— 已经是明文 LRC 就不动它。
+      if (!/\[\d{1,2}:\d{1,2}/.test(s) && looksLikeBase64(s)) {
+        try {
+          const decoded = atob(s);
+          // atob 结果按 UTF-8 还原（base64 里常是中文）
+          return utf8Decode(decoded);
+        } catch {
+          return s;
+        }
+      }
+      return s;
+    },
+
     async test() {
       try {
         await loadCode();
@@ -186,4 +225,22 @@ export function createJsSource(cfg: SourceConfig): MediaSource {
       }
     },
   };
+}
+
+/** v2.4.8 #1：base64 粗略判据（去空白后全为 base64 字符且长度合理） */
+function looksLikeBase64(s: string): boolean {
+  const t = s.replace(/\s+/g, '');
+  if (t.length < 24) return false;
+  return /^[A-Za-z0-9+/]+={0,2}$/.test(t);
+}
+
+/** v2.4.8 #1：atob 得到的「二进制字符串」按 UTF-8 还原成正常文本 */
+function utf8Decode(bin: string): string {
+  try {
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 0xff;
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch {
+    return bin;
+  }
 }

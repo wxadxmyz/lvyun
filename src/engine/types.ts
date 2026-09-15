@@ -81,6 +81,13 @@ export interface MediaSource {
   search(keyword: string, page?: number): Promise<MediaItem[]>;
   getPlayUrl(itemId: string): Promise<PlayUrl>;
   getDetail?(itemId: string): Promise<MediaItem>;
+  /**
+   * v2.4.8 #1：歌词获取通道。
+   * 返回 LRC 原文（含 [mm:ss.xx] 时间轴的字符串）、已解析好的 LyricLine[]，
+   * 或纯文本行数组 string[]；无歌词时返回空字符串 / 空数组。
+   * 由播放侧解析后写入 current.lyric。可选实现：源未提供时播放页回退「暂无歌词」。
+   */
+  getLyric?(item: MediaItem | string): Promise<string | string[] | LyricLine[]>;
   test(): Promise<boolean>;
 }
 

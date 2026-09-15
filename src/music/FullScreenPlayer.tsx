@@ -657,7 +657,7 @@ export function FullScreenPlayer({
                 <span className="pl-handle" title="拖拽排序"><Icon name="menu" size={16} /></span>
               </div>
             ))}
-            {state.queue.length === 0 && <div className="muted sm" style={{ padding: 24, textAlign: 'center' }}>当前为单曲播放，没有队列。</div>}
+            {state.queue.length === 0 && <div className="muted sm" style={{ padding: 24, textAlign: 'center' }}>播放列表为空，去搜索或点播一首歌吧。</div>}
           </div>
           <div className="fs-pl-foot">共 {state.queue.length} 首 · 可拖拽排序 · 点击播放</div>
         </div>

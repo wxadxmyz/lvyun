@@ -1,5 +1,6 @@
 // 播放解析：若 item 已带 playUrl 直接用，否则经对应源适配器取直链
 import { createSource, MediaItem, SourceConfig } from './engine';
+import { parseLrc } from './lib/lrc';
 
 // v2.4.1 #I：源配置指纹。
 // 用于判断「搜索结果产生之后，该源的配置是否已被改动（换源 / 更新订阅）」。
@@ -45,5 +46,41 @@ export async function resolvePlay(item: MediaItem, sources: SourceConfig[]): Pro
         ? '该源配置已变更，且此歌曲在新源中不可用'
         : '获取播放地址失败',
     );
+  }
+}
+
+/**
+ * v2.4.8 #1：歌词解析。
+ * 若 item 已带 lyric（如本地音乐内嵌）直接返回；否则向对应源请求歌词，
+ * 把源返回的「LRC 原文 / base64 已解码文本 / 纯文本行数组」统一解析成 LyricLine[]。
+ * 任何失败都静默返回空数组 —— 歌词是增强项，不该阻断播放。
+ */
+export async function resolveLyric(item: MediaItem, sources: SourceConfig[]): Promise<MediaItem> {
+  if (Array.isArray(item.lyric) && item.lyric.length) return item;
+
+  const cfg = sources.find((s) => s.id === item.sourceId);
+  if (!cfg) return item;
+
+  try {
+    const src = createSource(cfg);
+    if (typeof src.getLyric !== 'function') return item;
+    const raw = await src.getLyric(item);
+
+    // 源可能返回：LyricLine[] / 纯文本行数组 / LRC 原文字符串
+    let lines: MediaItem['lyric'] = [];
+    if (Array.isArray(raw)) {
+      // 已是 {time,text} 直接用；否则按纯文本行处理（无时间轴）
+      lines = raw.every((v: any) => v && typeof v === 'object' && 'text' in v)
+        ? (raw as import('./engine/types').LyricLine[])
+        : (raw as string[]).map((t) => ({ time: 0, text: String(t) }));
+    } else if (typeof raw === 'string' && raw) {
+      const parsed = parseLrc(raw);
+      // 解析不出时间轴（纯文本歌词）时降级为无时间轴行，至少能显示
+      lines = parsed.length ? parsed : raw.split(/\r?\n/).filter(Boolean).map((t) => ({ time: 0, text: t }));
+    }
+    if (!lines || !lines.length) return item;
+    return { ...item, lyric: lines };
+  } catch {
+    return item; // 歌词失败不影响播放
   }
 }

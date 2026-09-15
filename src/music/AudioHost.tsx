@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { usePlayer, player } from '../lib/playerStore';
-import { resolvePlay } from '../player';
+import { resolvePlay, resolveLyric } from '../player';
 import type { SourceConfig } from '../engine/types';
 import type { useLibrary } from '../lib/library';
 import { useToast } from '../lib/toast';
@@ -120,10 +120,77 @@ export function AudioHost({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.isPlaying]);
 
+  // ── v2.4.8 #1：切歌时异步拉歌词 ──────────────────────────────────────
+  // 与取直链分开：歌词是增强项，晚到/失败都不该阻断播放。
+  // 拉到后通过 player.updateCurrent 写回 current.lyric（FullScreenPlayer 直接读它渲染）。
+  useEffect(() => {
+    const it = state.current;
+    if (!it) return;
+    if (Array.isArray(it.lyric) && it.lyric.length) return; // 已有歌词（本地内嵌等）不重复拉
+    let alive = true;
+    resolveLyric(it, sourcesRef.current)
+      .then((withLyric) => {
+        if (!alive) return;
+        // 仅当仍是同一首歌时才回写，避免快速切歌时把旧歌词错挂到新歌上
+        const cur = player.getState().current;
+        if (cur && cur.id === it.id) player.updateCurrent({ lyric: withLyric.lyric });
+      })
+      .catch(() => { /* 静默：无歌词时播放页显示「暂无歌词」 */ });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.current?.id, state.current?.sourceId]);
+
   // ── 音量 / 静音 ────────────────────────────────────────────────────
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = state.muted ? 0 : state.volume;
   }, [state.volume, state.muted]);
+
+  /* ── v2.4.8 #9：前台媒体服务联动 ─────────────────────────────────────
+   * 目的：播放期间把进程提升为「前台服务」，避免切后台被系统回收导致音频中断。
+   * 说明：
+   *   · 非 Android 环境（桌面 / 浏览器）没有 LvYunAndroid 桥，全部静默跳过；
+   *   · 通知栏媒体键「上一首 / 播放暂停 / 下一首」由原生调用 window.__lvMedia.*，
+   *     这里把三个方法挂到 window，转发到已有的 player 动作。
+   */
+  useEffect(() => {
+    const w = window as any;
+    if (typeof w.__lvMedia === 'undefined') {
+      w.__lvMedia = {
+        prev: () => player.prev(),
+        next: () => player.next(),
+        toggle: () => player.toggle(),
+      };
+    }
+    return () => { /* 保留到会话结束，避免热重载期间丢失 */ };
+  }, []);
+
+  // 播放状态 / 曲目变化 → 通知原生更新前台服务与通知栏
+  useEffect(() => {
+    const w = window as any;
+    const bridge = w.LvYunAndroid;
+    if (!bridge) return;
+    try {
+      if (state.current && state.isPlaying) {
+        bridge.startMediaService?.(
+          state.current.title || '律云',
+          state.current.artist || '',
+          true,
+        );
+      } else if (state.current) {
+        // 暂停：保留通知（可继续播放），仅更新文案
+        bridge.startMediaService?.(
+          state.current.title || '律云',
+          state.current.artist || '',
+          false,
+        );
+      } else {
+        bridge.stopMediaService?.();
+      }
+    } catch { /* 桥调用失败不影响播放 */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.current?.id, state.isPlaying]);
 
   // 无 controls 的 <audio> 不占布局，这里不需要额外样式。
   return (

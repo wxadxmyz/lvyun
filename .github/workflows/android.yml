@@ -170,6 +170,24 @@ jobs:
           grep -c "setBarsColor" "$MAIN" || echo "setBarsColor missing!"
           grep -c "_lvApplyStatusBar" "$MAIN" || echo "_lvApplyStatusBar missing!"
 
+      - name: Patch Android foreground media service
+        # v2.4.8 #9：注入前台媒体服务，解决「切后台过一会儿自动停 / 切回像重进」。
+        # 该步骤会：① 写 LvYunMediaService.kt；② 改 AndroidManifest（权限 + service）；
+        # ③ 给 MainActivity 加 startMediaService/stopMediaService 桥并把通知键转进 WebView。
+        run: |
+          MANIFEST="src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+          if [ ! -f "$MANIFEST" ]; then
+            MANIFEST=$(find src-tauri/gen/android -name "AndroidManifest.xml" -path "*/main/*" 2>/dev/null | head -1)
+          fi
+          MAIN="src-tauri/gen/android/app/src/main/java/com/lvyun/app/MainActivity.kt"
+          if [ ! -f "$MAIN" ]; then
+            MAIN=$(find src-tauri/gen/android -name "MainActivity.kt" 2>/dev/null | head -1)
+          fi
+          python3 scripts/patch-android-media-service.py "$MANIFEST" "$MAIN"
+          echo "--- media service check ---"
+          grep -c "LvYunMediaService" "$MANIFEST" || echo "service missing in manifest!"
+          grep -c "startMediaService" "$MAIN" || echo "bridge missing in MainActivity!"
+
       - name: Sync Android launcher icon
         run: |
           python3 -m pip install --quiet pillow

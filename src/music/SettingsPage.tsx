@@ -23,7 +23,7 @@ import { pushBackHandler } from '../lib/backStack';
 // 回退版本：仅在取不到 Tauri 打包版本时使用（例如在浏览器里直接调试）。
 // ⚠️ 每次发版都要同步这里：之前写死 '2.3.6'，结果 APK 已是新版本、
 //    设置页一直显示旧号；这次升到 2.4.6 时又忘了同步，浏览器调试下显示成 2.3.11。
-const FALLBACK_VERSION = '2.4.7';
+const FALLBACK_VERSION = '2.4.8';
 
 function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
