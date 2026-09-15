@@ -53,6 +53,12 @@ const P: Record<string, ReactNode> = {
   // 播放器顶栏：左=播放列表(汉堡)，右=更多(三点竖排)
   menu: <><path d="M3 6h18" /><path d="M3 12h18" /><path d="M3 18h18" /></>,
   'more-vertical': <><circle cx="12" cy="5" r="1.7" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none" /><circle cx="12" cy="19" r="1.7" fill="currentColor" stroke="none" /></>,
+  // v2.4.6 #10：歌单管理的「重命名」图标（铅笔 + 底线）。此前只有 trash / plus，
+  // 歌单改名无处可点（连图标都没有），这次一并补齐。
+  edit: <><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z" /><path d="M14.5 6.5l3 3" /></>,
+  // v2.4.6 #10：三点（横向）。重命名/删除菜单按钮用横向三点，和行尾竖排三点区分开，
+  // 避免「同一个图标点出来两种菜单」的困惑。
+  more: <><circle cx="5" cy="12" r="1.7" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1.7" fill="currentColor" stroke="none" /></>,
   // 歌手/作者（原创人像轮廓）
   user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" /></>,
   // 倍速（原创速度计）

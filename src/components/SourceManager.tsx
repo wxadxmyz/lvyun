@@ -4,6 +4,7 @@ import { useSources } from '../store';
 import { AddSourceModal } from './AddSourceModal';
 import { encodeSources, decodeSources } from '../lib/sharecode';
 import { Icon } from './Icon';
+import { promptText } from './PromptDialog';
 
 const TYPE_LABEL: Record<string, string> = {
   'music-json': '音乐 API',
@@ -34,15 +35,26 @@ export function SourceManager({
     setStatus((s) => ({ ...s, [cfg.id]: ok ? 'ok' : 'fail' }));
   };
 
-  const doImportJson = () => {
-    const text = window.prompt('粘贴音源 JSON 数组：');
+  // v2.4.6 #7：window.prompt → promptText（App 内中文弹窗，见 PromptDialog.tsx）
+  const doImportJson = async () => {
+    const text = await promptText({
+      title: '粘贴音源 JSON',
+      placeholder: '在此粘贴音源 JSON（单个对象或数组）…',
+      multiline: true,
+      confirmText: '导入',
+    });
     if (!text) return;
     const r = importSources(text);
     setMsg(`已导入 ${r.added} 个，${r.errors.join('；')}`);
   };
 
-  const doImportShare = () => {
-    const text = window.prompt('粘贴音源分享码（MPS1. 开头）：');
+  const doImportShare = async () => {
+    const text = await promptText({
+      title: '粘贴音源分享码',
+      placeholder: '在此粘贴以 MPS1. 开头的分享码…',
+      multiline: true,
+      confirmText: '导入',
+    });
     if (!text) return;
     try {
       const list = decodeSources(text);

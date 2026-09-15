@@ -6,6 +6,9 @@ import { alistClient } from '../lib/alistClient';
 import { isTauri, getAutostart, setAutostart, checkForUpdate } from '../lib/tauriBridge';
 import { downloadStore, setDownloadOptions } from '../lib/downloads';
 import { Icon, type IconName } from './Icon';
+// v2.4.6 #7：window.prompt / alert 一律换成 App 内中文弹窗 + toast
+import { promptText } from './PromptDialog';
+import { useToast } from '../lib/toast';
 
 /* ---------- 分组卡片原子组件 ---------- */
 function Group({ title, children }: { title: string; children: ReactNode }) {
@@ -91,6 +94,7 @@ export function SettingsModal({
 }) {
   const { skin, selectedId, setSkinId } = useSkin();
   const { settings, update } = useSettings();
+  const toast = useToast();
   const isMusic = appName === '音乐';
 
   const [autostart, setAutostartState] = useState(false);
@@ -129,33 +133,41 @@ export function SettingsModal({
     setDownloadOptions({ notifyDownload: v });
   };
 
-  const importSource = () => {
-    const text = window.prompt('粘贴音源 JSON（单个对象或数组）：');
+  // v2.4.6 #7：以下三处的 window.prompt / alert 全部换掉。
+  // alert 同样是系统原生弹窗（按钮固定为英文 OK），一并改用 toast。
+  const importSource = async () => {
+    const text = await promptText({
+      title: '粘贴音源 JSON',
+      placeholder: '在此粘贴音源 JSON（单个对象或数组）…',
+      multiline: true,
+      confirmText: '导入',
+    });
     if (!text) return;
-    try {
-      const r = store.importSources(text);
-      alert(r.added > 0 ? `已导入 ${r.added} 个音源。` : '未导入：' + (r.errors[0] || '格式不正确'));
-    } catch (e: any) {
-      alert('导入失败：' + (e?.message ?? ''));
-    }
+    const r = store.importSources(text);
+    toast.push(r.added > 0 ? `已导入 ${r.added} 个音源` : '未导入：' + (r.errors[0] || '格式不正确'));
   };
 
   const exportAll = () => {
     const data = { version: 1, sources: store.sources, settings };
     navigator.clipboard?.writeText(JSON.stringify(data, null, 2));
-    alert('配置已复制到剪贴板（含音源与设置）。');
+    toast.push('配置已复制到剪贴板（含音源与设置）');
   };
 
-  const importAll = () => {
-    const text = window.prompt('粘贴此前导出的配置 JSON：');
+  const importAll = async () => {
+    const text = await promptText({
+      title: '粘贴配置 JSON',
+      placeholder: '在此粘贴此前导出的配置 JSON…',
+      multiline: true,
+      confirmText: '导入',
+    });
     if (!text) return;
     try {
       const data = JSON.parse(text);
       if (Array.isArray(data.sources)) for (const s of data.sources) store.importSources(JSON.stringify([s]));
       if (data.settings) update(data.settings);
-      alert('导入完成，重启页面生效。');
+      toast.push('导入完成，重启页面生效');
     } catch (e: any) {
-      alert('导入失败：' + (e?.message ?? ''));
+      toast.push('导入失败：' + (e?.message ?? ''));
     }
   };
 
@@ -164,17 +176,17 @@ export function SettingsModal({
     if (mode === 'backup') {
       const payload = libraryPayload ? libraryPayload() : JSON.stringify({ sources: store.sources, settings });
       const r = await alistClient.backup(alistSrc || null, payload);
-      alert(r.message + (r.ok ? '可在另一台设备「从云盘恢复」。' : ''));
+      toast.push(r.message + (r.ok ? '可在另一台设备「从云盘恢复」。' : ''));
     } else {
       const r = await alistClient.restore(alistSrc || null);
-      if (!r.data) return alert(r.message);
+      if (!r.data) { toast.push(r.message); return; }
       try {
         const data = JSON.parse(r.data);
         if (Array.isArray(data.sources)) for (const s of data.sources) store.importSources(JSON.stringify([s]));
         if (data.settings) update(data.settings);
-        alert(r.message + '（重启页面生效）。');
+        toast.push(r.message + '（重启页面生效）。');
       } catch {
-        alert('恢复失败：数据无法解析。');
+        toast.push('恢复失败：数据无法解析。');
       }
     }
   };

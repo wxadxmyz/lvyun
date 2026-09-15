@@ -53,6 +53,21 @@ function push(): boolean {
 
 let installed = false;
 
+/**
+ * v2.4.6 #3：公开的「立即同步一次」——播放页进入 / 退出、切 tab、切皮肤时调用。
+ *
+ * 为什么光靠 MutationObserver 不够：
+ *   ① observer 只监听后续变化，首帧 apply(skin) 可能早于 observer 建立；
+ *   ② 观察回调有 200ms 节流，用户从主页点进播放页时底部 Tab 会短暂保持旧色，
+ *      肉眼能看出「闪」一下；
+ *   ③ Android 15 起 navigationBarColor 被系统废弃，部分场景需要重推才生效。
+ * 所以关键时机（路由变化）主动推一次，不依赖观察。
+ */
+export function syncNavBarNow(): void {
+  // 让浏览器先完成 DOM 变更（例如播放页刚挂到 body 上），再读计算样式
+  requestAnimationFrame(() => requestAnimationFrame(() => push()));
+}
+
 export function installNavBarSync(): void {
   if (installed || typeof window === 'undefined') return;
   installed = true;
@@ -76,4 +91,8 @@ export function installNavBarSync(): void {
     /* ignore */
   }
   window.addEventListener('focus', schedule, { passive: true });
+  // 从后台切回前台时系统可能重置了两条 bar 的颜色，补推一次
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) schedule();
+  });
 }

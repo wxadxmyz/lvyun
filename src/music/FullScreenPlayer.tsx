@@ -8,6 +8,9 @@ import { SourceConfig, MediaItem } from '../engine/types';
 import { aggregateSearch } from '../engine';
 import { gradientFor } from '../lib/cover';
 import { Icon } from '../components/Icon';
+// v2.4.6 #7：命令式中文输入弹窗（替代 window.prompt —— Android WebView 的原生
+// JsPromptDialog 按钮文案是内置英文 CANCEL/OK，前端无法控制）
+import { promptText } from '../components/PromptDialog';
 import { useToast } from '../lib/toast';
 // v2.3.11 #4：返回键栈式调度
 import { pushBackHandler } from '../lib/backStack';
@@ -142,6 +145,10 @@ export function FullScreenPlayer({
   const [showEq, setShowEq] = useState(false);
   // 封面位切换成同尺寸歌词面板（设计稿 .lyrics，200×200 替换 .cover）
   const [coverLyric, setCoverLyric] = useState(false);
+  // v2.4.6 #11：加歌单的**目标歌曲**。
+  //   旧实现写死当前播放的 `it`，于是「播放列表行尾 ＋」只能加正在播的那首。
+  //   现在两个入口各自指定目标：⋮ 菜单 → null（跟随当前播放）；行尾 ＋ → 该行歌曲。
+  const [addTarget, setAddTarget] = useState<MediaItem | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [speed, setSpeed] = useState(settings.playbackRate || 1);
   const [eqGains, setEqGainsLocal] = useState<number[]>(getEqGains());
@@ -173,8 +180,9 @@ export function FullScreenPlayer({
         if (showEq) { setShowEq(false); return true; }
         if (showMenu) {
           // 菜单内的二级视图（如歌单选择、睡眠定时）先退回主菜单，再关菜单
-          if (menuView !== 'main') { setMenuView('main'); return true; }
+          if (menuView !== 'main') { setMenuView('main'); setAddTarget(null); return true; }
           setShowMenu(false);
+          setAddTarget(null);
           return true;
         }
         if (showPlaylist) { setShowPlaylist(false); return true; }
@@ -183,12 +191,41 @@ export function FullScreenPlayer({
       }),
     [showPlaylist, showAuthor, showLandscape, showMenu, menuView, showEq, coverLyric],
   );
+  // v2.4.6 #6：横屏时给 <body> 挂 .landscape-on 标记。
+  // 底部 Tab（.bottom-nav）挂在 App 根层、与播放页同级，CSS 无法从 .fs-land 反向选中它，
+  // 所以用 body 标记做开关：横屏隐藏 Tab + 收紧内容 padding，进度条才能贴到底边。
+  useEffect(() => {
+    document.body.classList.toggle('landscape-on', showLandscape);
+    return () => document.body.classList.remove('landscape-on');
+  }, [showLandscape]);
+
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const sleepTimer = useRef<number | undefined>(undefined);
 
   const it = state.current ?? ({ title: '未在播放', artist: '', album: '', id: '', sourceId: '', cover: undefined, lyric: [] } as any);
   const empty = !state.current;
   const fav = state.current ? library.isFavorite(it) : false;
+
+  // v2.4.6 #11：决定「加歌单」作用于哪首歌。
+  //   addTarget 为空 → 跟随当前播放歌曲（⋮ 菜单入口）
+  //   addTarget 有值 → 用行内指定的那首（播放列表行尾 ＋ 入口）
+  const addItem: MediaItem | null = addTarget ?? (state.current ?? null);
+
+  // v2.4.6 #7 + #11：新建歌单后**自动把目标歌曲收进去**。
+  //   旧实现只 createPlaylist，用户还得再点一次歌单才加进去（点两次才完成一个动作）。
+  const newPlaylist = async () => {
+    const name = await promptText({
+      title: '新建歌单',
+      placeholder: '给歌单起个名字',
+      maxLength: 30,
+      confirmText: '创建',
+    });
+    if (!name) return;
+    // createPlaylist 的 setState 是异步的，当前 tick 拿不到新歌单 id，
+    // 所以用「创建并可选入库」的单次 API 一步完成，避免 create → add 两步竞态。
+    library.createPlaylistWith(name, addItem ?? undefined);
+    toast.push(addItem ? `已创建「${name}」并加入 1 首` : `已创建「${name}」`);
+  };
 
   // 歌词：优先用带时间轴的 LyricLine，其次降级的字符串数组
   const lyricLines: { time: number; text: string }[] = Array.isArray(it.lyric)
@@ -282,7 +319,9 @@ export function FullScreenPlayer({
 
   // 更多菜单：圆形图标网格（4 列，54px 圆），对齐设计稿三点面板
   const MORE_ITEMS: { key: string; icon: any; label: string; onClick: () => void }[] = [
-    { key: 'add', icon: 'plus', label: '加歌单', onClick: () => setMenuView('add') },
+    // v2.4.6 #11：显式清空 addTarget —— 保证 ⋮ 菜单入口永远是「作用于当前播放歌曲」，
+    // 不会残留上一次行尾 ＋ 指定的那首（否则菜单会加错歌）。
+    { key: 'add', icon: 'plus', label: '加歌单', onClick: () => { setAddTarget(null); setMenuView('add'); } },
     { key: 'speed', icon: 'gauge', label: '倍速播放', onClick: () => setMenuView('speed') },
     { key: 'artist', icon: 'user', label: '查看作者', onClick: () => { setShowMenu(false); setShowAuthor(true); } },
     { key: 'timer', icon: 'clock', label: '定时关闭', onClick: () => setMenuView('timer') },
@@ -405,6 +444,9 @@ export function FullScreenPlayer({
         </div>
 
         {/* 封面位：200×200 r20，点击在「封面 / 歌词」间切换（设计稿 .cover / .lyrics 同尺寸同位） */}
+        {/* 封面位：.pv-art-slot 撑走「顶栏之下、标题之上」的剩余高度并纵向居中，
+            尺寸由 CSS 的 min(78vw, 330px) 决定（v2.4.6 #4）。 */}
+        <div className="pv-art-slot">
         {coverLyric ? (
           <div className="pv-lyrics" onClick={() => setCoverLyric(false)}>
             {lyricLines.length ? (
@@ -426,6 +468,7 @@ export function FullScreenPlayer({
             {it.cover ? <img src={it.cover} alt="" /> : IC.note}
           </div>
         )}
+        </div>
 
         {/* v2.4.0 C4：封面下方=歌名/歌手显示位；空态留空（「未在播放」已搬到顶栏），
             .hold 仍撑高度防止控制区跳动 */}
@@ -496,7 +539,7 @@ export function FullScreenPlayer({
         <div className="ld-page">
           <div className="ld-top">
             <button className="ld-back" onClick={() => setCoverLyric(false)} aria-label="返回">
-              <Icon name="arrow-left" />
+              <Icon name="arrow-left" size={26} />
             </button>
             <div className="ld-head">
               <div className="ld-title">{it.title || '未在播放'}</div>
@@ -579,7 +622,7 @@ export function FullScreenPlayer({
       {showPlaylist && (
         <div className="fs-playlist">
           <div className="fs-pl-head">
-            <button className="icon" onClick={() => setShowPlaylist(false)} aria-label="返回"><Icon name="arrow-left" /></button>
+            <button className="icon" onClick={() => setShowPlaylist(false)} aria-label="返回"><Icon name="arrow-left" size={26} /></button>
             <span className="pl-title">播放列表</span>
             {/* v2.4.5 #1：与底部按钮走同一个 cycleMode（带 toast），不再各写一套 */}
             <button className="pl-mode" onClick={cycleMode} title={MODE_LABEL[state.mode] ?? '循环模式'}>
@@ -604,6 +647,22 @@ export function FullScreenPlayer({
                 </div>
                 <button className={'mini' + (library.isFavorite(q) ? ' fav' : '')} title="收藏" onClick={(e) => { e.stopPropagation(); library.toggleFavorite(q); }}>
                   <Icon name={library.isFavorite(q) ? 'heart-filled' : 'heart'} size={15} />
+                </button>
+                {/* v2.4.6 #11：「加歌单」按钮 —— 新增，位于拖拽手柄**左侧**。
+                    点击后打开与 ⋮ 菜单同一个「添加到歌单」浮层，只是目标换成这一行。
+                    拖拽手柄（右侧 ⋮⋮）原样保留，两者互不影响。 */}
+                <button
+                  className="mini pl-add"
+                  title="添加到歌单"
+                  aria-label="添加到歌单"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAddTarget(q);
+                    setMenuView('add');
+                    setShowMenu(true);
+                  }}
+                >
+                  <Icon name="plus" size={16} />
                 </button>
                 <span className="pl-handle" title="拖拽排序"><Icon name="menu" size={16} /></span>
               </div>
@@ -721,18 +780,30 @@ export function FullScreenPlayer({
             {menuView === 'add' && (
               <>
                 <div className="fs-sheet-head">
-                  <button className="icon" onClick={() => setMenuView('main')} aria-label="返回"><Icon name="arrow-left" /></button>
+                  <button className="icon" onClick={() => { setMenuView('main'); setAddTarget(null); }} aria-label="返回"><Icon name="arrow-left" /></button>
                   <span className="sh-title">添加到歌单</span>
+                  {addTarget && <span className="sh-sub" title={addTarget.title}>{addTarget.title}</span>}
                 </div>
                 <div className="fs-plpick">
-                  <div className="fs-plpick-create" onClick={() => { const n = window.prompt('歌单名称'); if (n && n.trim()) library.createPlaylist(n.trim()); }}>
+                  <div className="fs-plpick-create" onClick={() => { void newPlaylist(); }}>
                     <span className="pc-ico"><Icon name="plus" size={18} /></span>
                     <span>创建新歌单</span>
                   </div>
                   {library.lib.playlists.map((p) => {
-                    const added = p.items.some((x) => x.sourceId === it.sourceId && x.id === it.id);
+                    const added = addItem
+                      ? p.items.some((x) => x.sourceId === addItem.sourceId && x.id === addItem.id)
+                      : false;
                     return (
-                      <div key={p.id} className={'fs-plpick-item' + (added ? ' added' : '')} onClick={() => library.addToPlaylist(p.id, it)}>
+                      <div
+                        key={p.id}
+                        className={'fs-plpick-item' + (added ? ' added' : '')}
+                        onClick={() => {
+                          if (!addItem) return;
+                          library.addToPlaylist(p.id, addItem);
+                          // v2.4.6 #11：给明确反馈，且**不关浮层** —— 允许连续加进多个歌单
+                          toast.push(added ? `「${p.name}」中已有这首歌` : `已加入「${p.name}」`);
+                        }}
+                      >
                         <span className="pi-cover" />
                         <span className="pi-name">{p.name}</span>
                         <span className="pi-count">{p.items.length} 首</span>

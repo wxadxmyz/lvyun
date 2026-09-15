@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSources } from '../store';
 import { useLibrary } from '../lib/library';
 import { useSettings } from '../lib/settings';
@@ -8,6 +8,11 @@ import { SourceListPage } from '../components/SourceListPage';
 import { Icon } from '../components/Icon';
 import { checkForUpdate } from '../lib/tauriBridge';
 import { useSkin, SKINS } from '../lib/theme';
+// v2.4.6 #7：window.confirm / alert 一律换成 App 内中文弹层 + toast
+// （原生弹窗在 Android WebView 里按钮文案是英文 CANCEL/OK，且宿主未实现
+//   onJsConfirm 时会直接返回 false —— 确认框点了没反应）
+import { promptText } from '../components/PromptDialog';
+import { useToast } from '../lib/toast';
 import { getVersion } from '@tauri-apps/api/app';
 // v2.4.5 #7：下载任务此前只存在内存里，设置页「离线缓存」又只放了音质/并发两个选项，
 // 于是用户点了下载之后完全看不到进度和结果（「下载的歌曲在哪里？」）。
@@ -16,8 +21,9 @@ import { useDownloads, downloadStore } from '../lib/downloads';
 import { pushBackHandler } from '../lib/backStack';
 
 // 回退版本：仅在取不到 Tauri 打包版本时使用（例如在浏览器里直接调试）。
-// 之前这里写死 '2.3.6'，导致 APK 已是新版本、设置页却一直显示旧号。
-const FALLBACK_VERSION = '2.3.11';
+// ⚠️ 每次发版都要同步这里：之前写死 '2.3.6'，结果 APK 已是新版本、
+//    设置页一直显示旧号；这次升到 2.4.6 时又忘了同步，浏览器调试下显示成 2.3.11。
+const FALLBACK_VERSION = '2.4.6';
 
 function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -74,19 +80,47 @@ export function SettingsPage({
   onOpenMyMusic,
   sub,
   setSub,
+  onOpenDebug,
 }: {
   onOpenMyMusic: (t: 'favorites' | 'playlists') => void;
   sub: string | null;
   setSub: (v: string | null) => void;
+  onOpenDebug?: () => void;
 }) {
   const store = useSources('music');
   const library = useLibrary('music');
+  const toast = useToast();
   const { settings, update } = useSettings();
   const [updateState, setUpdateState] = useState('');
   const [checking, setChecking] = useState(false);
   const [appVersion, setAppVersion] = useState(FALLBACK_VERSION);
   const [cacheMsg, setCacheMsg] = useState('');
   const [cacheSize, setCacheSize] = useState(0);
+  // v2.4.6 #12（方案 A）：调试入口隐藏化。
+  // 原来的「主页顶栏 虫图标」和「主页工具栏 虫图标」都被删掉了 ——
+  // 普通用户看到会困惑，而开发者自己每次多点两下并不亏。
+  // 新入口：设置 → 关于 → 连点版本号 7 次（Android 惯例的「开发者模式」手势）。
+  const [tapCount, setTapCount] = useState(0);
+  const tapTimer = useRef<number | undefined>(undefined);
+
+  const onVersionTap = () => {
+    if (!onOpenDebug) return;
+    // 3 秒内没有继续点击就重新计数，避免误触累积
+    if (tapTimer.current) window.clearTimeout(tapTimer.current);
+    tapTimer.current = window.setTimeout(() => setTapCount(0), 3000);
+
+    const next = tapCount + 1;
+    setTapCount(next);
+    if (next >= 7) {
+      setTapCount(0);
+      if (tapTimer.current) window.clearTimeout(tapTimer.current);
+      toast.push('已解锁开发者调试面板', 'ok');
+      onOpenDebug();
+      return;
+    }
+    // 点到第 4 次开始给提示，让"还差几下"可见（否则用户不知道在数什么）
+    if (next >= 4) toast.push(`再点 ${7 - next} 次进入开发者模式`);
+  };
   const dls = useDownloads();
   // 显示 Tauri 打包时的真实版本（tauri.conf.json 的 version），不再写死
   useEffect(() => {
@@ -119,7 +153,7 @@ export function SettingsPage({
   useEffect(() => { setCacheSize(calcSize()); }, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  const clearCache = () => {
+  const clearCache = async () => {
     try {
       const keys: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
@@ -128,7 +162,16 @@ export function SettingsPage({
       }
       const size = calcSize();
       if (!keys.length && size === 0) { setCacheMsg('无缓存'); return; }
-      if (!window.confirm(`将清除约 ${fmtSize(size)} 缓存（音源、设置与皮肤会保留），确定继续吗？`)) return;
+      // v2.4.6 #7：原生 confirm → 应用内中文确认弹窗。
+      // 复用 promptText 的空输入语义：值为 '1' 表示"确认"，null 表示"取消"。
+      const ok = await promptText({
+        title: '清除缓存',
+        message: `将清除约 ${fmtSize(size)} 缓存（音源、设置与皮肤会保留），确定继续吗？`,
+        confirmText: '清除',
+        cancelText: '取消',
+        defaultValue: '1',
+      });
+      if (!ok) return;
       keys.forEach((k) => localStorage.removeItem(k));
       try {
         sessionStorage.clear();
@@ -137,9 +180,9 @@ export function SettingsPage({
       } catch { /* ignore */ }
       setCacheSize(calcSize());
       setCacheMsg('已清除');
-      window.alert(`已清除 ${keys.length} 项缓存，音源与设置均已保留。`);
+      toast.push(`已清除 ${keys.length} 项缓存，音源与设置均已保留。`, 'ok');
     } catch (e) {
-      window.alert('清除失败：' + String(e));
+      toast.push('清除失败：' + String(e), 'err');
     }
   };
 
@@ -401,7 +444,8 @@ export function SettingsPage({
         <SubPage title="关于" onBack={() => setSub(null)}>
           <div className="about-box">
             <h2>律云 LvYun</h2>
-            <p className="muted">版本 v{appVersion}</p>
+            {/* v2.4.6 #12：连点 7 次进开发者模式（隐藏入口，见 onVersionTap） */}
+            <p className="muted" onClick={onVersionTap} style={{ cursor: 'default' }}>版本 v{appVersion}</p>
             <p className="about-desc">
               一款开源的本地音乐聚合播放工具，内容来自用户自行添加的第三方音源，软件本身不提供任何资源。
             </p>

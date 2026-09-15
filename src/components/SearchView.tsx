@@ -160,6 +160,21 @@ export function SearchView({
 
       {loading && <div className="loading">跨源搜索中…</div>}
 
+      {/* v2.4.6 #2：结果分组标题（设计稿 .grp-head）。
+          单源结果时显示「来自：xxx（N）」+ 整组加入，多源则由下方 tab 承担筛选。 */}
+      {searched && !loading && shown.length > 0 && (
+        <div className="row-head">
+          <b>
+            {srcFilter === '__all__'
+              ? `全部结果（${items.length}）`
+              : `${srcFilter}（${shown.length}）`}
+          </b>
+          {enableQueue && onQueue && (
+            <button className="link" onClick={() => onQueue(shown)}>整组加入队列</button>
+          )}
+        </div>
+      )}
+
       {/* v2.4.5 #9：来源筛选 tab —— 多源混排时可只看某一个源 */}
       {srcNames.length > 1 && (
         <div className="src-tabs">
@@ -193,10 +208,11 @@ export function SearchView({
               <span className="ttitle">{it.title}</span>
               <span className="tsub">
                 {[it.artist, it.album, it.year].filter(Boolean).join(' · ') || '未知'}
+                {/* v2.4.6 #2：来源改为行内小角标（设计稿 .rw-src），
+                    不再用独立的 .tsrc 列 —— 那一列会吃掉标题可用宽度，长歌名被截断。 */}
+                <span className="tsrc-inline">{it.sourceName}</span>
               </span>
             </span>
-            {it.episodes && it.episodes.length > 1 && <span className="tsrc">{it.episodes.length}集</span>}
-            <span className="tsrc">{it.sourceName}</span>
             <span className="tactions" onClick={(e) => e.stopPropagation()}>
               <button className="mini" title="播放" onClick={() => onPlay(it)}><Icon name="play" size={16} /></button>
               {enableQueue && onQueue && (
@@ -214,12 +230,6 @@ export function SearchView({
           </div>
         ))}
       </div>
-
-      {searched && srcNames.length > 1 && srcFilter !== '__all__' && enableQueue && onQueue && (
-        <div className="row-head" style={{ padding: '4px 2px' }}>
-          <button className="link" onClick={() => onQueue(shown)}>把当前 {shown.length} 条加入队列</button>
-        </div>
-      )}
 
       {searched && !loading && items.length === 0 && <div className="empty">没有找到结果，换个关键词或检查音源。</div>}
     </div>

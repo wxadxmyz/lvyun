@@ -6,6 +6,8 @@ import { ToastProvider } from '../lib/toast';
 import { installSafeAreaFallback } from '../lib/safeArea';
 import { installNavBarSync } from '../lib/navBar';
 import { initSpiderDebug } from '../lib/debug';
+// v2.4.6 #7：命令式中文输入弹窗宿主（挂载在 App 根部，见 JSX 里 <PromptHost />）
+import { PromptHost } from '../components/PromptDialog';
 import '../styles.css';
 
 // #8：沉浸式下部分 WebView 的 env(safe-area-inset-top) 返回 0，
@@ -21,6 +23,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <ThemeProvider>
       <ToastProvider>
         <MusicApp />
+        {/* v2.4.6 #7：全局只挂一次。promptText() 通过它渲染中文输入弹窗，
+            替代 window.prompt（WebView 原生弹窗按钮是英文 CANCEL/OK）。 */}
+        <PromptHost />
       </ToastProvider>
     </ThemeProvider>
   </React.StrictMode>

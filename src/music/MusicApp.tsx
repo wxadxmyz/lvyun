@@ -21,6 +21,8 @@ import { gradientFor, initial } from '../lib/cover';
 import { Icon } from '../components/Icon';
 // v2.3.11 #4：返回键栈式调度
 import { dispatchBack, pushBackHandler } from '../lib/backStack';
+// v2.4.6 #3：切 tab 时主动重推一次系统栏颜色（四段同色）
+import { syncNavBarNow } from '../lib/navBar';
 import SplashScreen from '../components/SplashScreen';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -59,6 +61,16 @@ export default function MusicApp() {
       document.documentElement.style.setProperty('--accent2', settings.themeColor);
     }
   }, [settings.themeColor]);
+
+  /* v2.4.6 #3：播放页「四段同色」——通知栏 / 顶栏区 / 底部 Tab / 手势条 与播放器背景一致。
+   *
+   * 前两段由 CSS 负责（.pv-root 吃 --bg、::before 垫状态栏区、.pv-root ~ .bottom-nav
+   * 抹掉分隔线与阴影）；后两段必须由原生桥 setBarsColor 染。桥是异步延迟绑定的，
+   * 而「主页 ↔ 播放页」切换正是 --bg 感觉最明显变化的时刻，所以每次 tab 变化都主动推一次，
+   * 不依赖 MutationObserver 那 200ms 节流（否则能看出被.Tab 闪一下的割裂感）。 */
+  useEffect(() => {
+    syncNavBarNow();
+  }, [tab]);
 
   /* ---------------------------------------------------------------------
    * v2.3.11 #4：返回键改为「栈式调度」，两份入口共用同一个 handleBack。
@@ -213,9 +225,8 @@ export default function MusicApp() {
           </button>
         </nav>
         <div className="tb-right">
-          <button className="icon" onClick={() => setShowDebug(true)} title="调试">
-            <Icon name="bug" />
-          </button>
+          {/* v2.4.6 #12（方案 A）：顶栏「调试」虫图标已移除。
+              新入口 = 设置 → 关于 → 连点版本号 7 次（见 SettingsPage.onVersionTap）。 */}
           <button className="icon settings-btn" onClick={() => goTab('settings')} title="设置" aria-label="设置">
             <Icon name="settings" size={20} />
           </button>
@@ -231,12 +242,18 @@ export default function MusicApp() {
             onSearch={goSearch}
             onOpenSources={openSources}
             onOpenHistory={() => setHistoryOpen(true)}
-            onOpenDebug={() => setShowDebug(true)}
             onOpenLocal={() => setLocalOpen(true)}
           />
         )}
 
-        {tab === 'settings' && <SettingsPage onOpenMyMusic={setMyMusic} sub={settingsSub} setSub={setSettingsSub} />}
+        {tab === 'settings' && (
+          <SettingsPage
+            onOpenMyMusic={setMyMusic}
+            sub={settingsSub}
+            setSub={setSettingsSub}
+            onOpenDebug={() => setShowDebug(true)}
+          />
+        )}
 
         {localOpen && <LocalMusicView playback={playback} library={library} onClose={() => setLocalOpen(false)} />}
 

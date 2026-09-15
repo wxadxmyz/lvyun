@@ -102,8 +102,49 @@ export function useLibrary(appKey: string) {
     setLib((l) => ({ ...l, playlists: [...l.playlists, { id: uid(), name: name || '我的歌单', items: [] }] }));
   }, []);
 
+  // v2.4.6 #10/#11：创建歌单并在同一次 setState 里可选入库。
+  // 为什么需要它：createPlaylist 之后立刻 addToPlaylist 会拿不到新歌单的 id
+  // （setLib 是异步的，当前闭包里的 lib.playlists 还是旧的），
+  // 典型表现就是「建完歌单，歌没进去」。一次 setState 内完成即可彻底规避。
+  const createPlaylistWith = useCallback((name: string, first?: MediaItem) => {
+    setLib((l) => ({
+      ...l,
+      playlists: [
+        ...l.playlists,
+        { id: uid(), name: name || '我的歌单', items: first ? [first] : [] },
+      ],
+    }));
+  }, []);
+
   const removePlaylist = useCallback((pid: string) => {
     setLib((l) => ({ ...l, playlists: l.playlists.filter((p) => p.id !== pid) }));
+  }, []);
+
+  // v2.4.6 #10：改名。此前完全没有这个 API —— 歌单建好就改不了名。
+  const renamePlaylist = useCallback((pid: string, name: string) => {
+    const n = name.trim();
+    if (!n) return;
+    setLib((l) => ({
+      ...l,
+      playlists: l.playlists.map((p) => (p.id === pid ? { ...p, name: n } : p)),
+    }));
+  }, []);
+
+  // v2.4.6 #11：批量入库。
+  // 旧实现逐首 addToPlaylist，长队列会触发 N 次 setState / N 次渲染
+  // （500 首队列 = 500 次），保存整个队列时会明显卡顿。这里一次 setState 完成，
+  // 且按 keyOf 去重（同一首歌不重复加入）。
+  const addManyToPlaylist = useCallback((pid: string, items: MediaItem[]) => {
+    if (!items.length) return;
+    setLib((l) => ({
+      ...l,
+      playlists: l.playlists.map((p) => {
+        if (p.id !== pid) return p;
+        const exist = new Set(p.items.map(keyOf));
+        const add = items.filter((x) => !exist.has(keyOf(x)));
+        return add.length ? { ...p, items: [...p.items, ...add] } : p;
+      }),
+    }));
   }, []);
 
   const addToPlaylist = useCallback((pid: string, item: MediaItem) => {
@@ -175,8 +216,11 @@ export function useLibrary(appKey: string) {
     toggleFavorite,
     isFavorite,
     createPlaylist,
+    createPlaylistWith,
     removePlaylist,
+    renamePlaylist,
     addToPlaylist,
+    addManyToPlaylist,
     removeFromPlaylist,
     setWatchProgress,
     clearHistory,

@@ -13,7 +13,6 @@ export function Discover({
   onSearch,
   onOpenSources,
   onOpenHistory,
-  onOpenDebug,
   onOpenLocal,
 }: {
   sources: SourceConfig[];
@@ -22,7 +21,6 @@ export function Discover({
   onSearch: (q: string) => void;
   onOpenSources: () => void;
   onOpenHistory: () => void;
-  onOpenDebug: () => void;
   onOpenLocal: () => void;
 }) {
   // v2.4.0 I1：主页榜单（策展式静态数据，不含歌曲；点进用 keyword 搜用户自己的音源）
@@ -44,15 +42,22 @@ export function Discover({
       .finally(() => { if (force) setRefreshing(false); });
   }, []);
 
-  // v2.4.5 #11（原 v2.5.0 #2）：加 / 删源时强制绕过 12h 榜单缓存。
-  // 旧逻辑依赖 sources.length 会重跑 effect，但走的是缓存分支 —— 拿回完全相同的旧数据，
-  // 页面零变化，用户只能「杀进程重开」才看到新榜。现在：源数量真的变了 → force。
-  const lastSrcCount = useRef<number>(sources.length);
+  // v2.4.6 #1：加 / 删源时强制绕过 12h 榜单缓存。
+  //
+  // ⚠️ v2.4.5 这段是**死代码**：当时 useSources 每次调用各建一份 state，
+  //    在设置页导入源只更新了设置页那份，Discover 收到的 sources.length 从没变过，
+  //    `changed` 恒为 false，force 分支永不执行。现在 store 已改全局单例（见 store.ts），
+  //    导入 / 删除源会真正传播到这里，这段逻辑才第一次真正生效。
+  //
+  // 另外把「只看数量」升级为「看源集合指纹」：编辑同一源的 baseUrl 或换掉一个源
+  // 但数量不变时，也应该刷新。
+  const srcKey = sources.map((s) => s.id + ':' + (s.enabled ? '1' : '0')).join('|');
+  const lastSrcKey = useRef<string>(srcKey);
   useEffect(() => {
-    const changed = lastSrcCount.current !== sources.length;
-    lastSrcCount.current = sources.length;
+    const changed = lastSrcKey.current !== srcKey;
+    lastSrcKey.current = srcKey;
     void loadToplists(changed);
-  }, [loadToplists, sources.length]);
+  }, [loadToplists, srcKey]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -76,7 +81,8 @@ export function Discover({
           <Icon name="refresh" size={22} />
         </button>
         <button className="ht-ico" onClick={onOpenHistory} title="历史"><Icon name="clock" size={22} /></button>
-        <button className="ht-ico" onClick={onOpenDebug} title="调试"><Icon name="bug" size={22} /></button>
+        {/* v2.4.6 #12（方案 A）：主页「调试」虫图标已移除。
+            新入口 = 设置 → 关于 → 连点版本号 7 次。 */}
       </div>
     </div>
   );

@@ -855,7 +855,15 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .fs-pl-item .pl-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .fs-pl-item.active .pl-name{color:var(--accent);}
 .fs-pl-item .pl-sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;}
-.fs-pl-item .pl-handle{color:var(--muted);cursor:grab;flex-shrink:0;}
+.fs-pl-item .pl-handle{color:var(--muted);cursor:grab;flex-shrink:0;padding-left:2px;}
+/* v2.4.6 #11：行尾「添加到歌单」＋ 按钮（新增，位于拖拽手柄左侧）。
+   收藏 / ＋ / 拖拽手柄三个控件都是 28px 命中区，视觉上无边框、无底色，
+   避免 4 个描边方块把行尾挤成「按钮墙」。 */
+.fs-pl-item .mini{width:28px;height:28px;border-radius:8px;background:transparent;border:none;color:var(--muted);}
+.fs-pl-item .mini:hover{background:var(--panel3);color:var(--text);}
+.fs-pl-item .mini.fav{color:var(--accent);}
+.fs-pl-item .pl-add{color:var(--muted);}
+.fs-pl-item .pl-add:hover{background:var(--panel3);color:var(--accent);}
 .fs-pl-foot{padding:12px 16px calc(12px + var(--sab));color:var(--muted);font-size:12px;text-align:center;border-top:1px solid var(--border);}
 
 /* ============ 三点菜单 / 子面板（底部弹出 sheet）============ */
@@ -864,7 +872,7 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
    而 .bottom-nav(70) 在 .pv-root 之外 —— 父容器整体在 Tab 之下，
    内部 z-index 再大也无效，导致 3 点菜单最后几行被 Tab 切掉。
    JSX 已把该节点移到 .pv-root 之外（Fragment 同级），配合此处 fixed 即可覆盖 Tab。 */
-.fs-menu-mask{position:fixed;inset:0;z-index:75;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;overflow:hidden;touch-action:none;animation:fade .15s;}
+.fs-menu-mask{position:fixed;inset:0;z-index:92;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;overflow:hidden;touch-action:none;animation:fade .15s;}
 .fs-sheet{width:100%;max-width:100%;background:var(--panel);border-radius:18px 18px 0 0;padding:10px 12px calc(14px + var(--sab));max-height:84%;overflow-y:auto;overflow-x:hidden;touch-action:pan-y;overscroll-behavior:contain;animation:pop .16s ease;}
 .fs-sheet-head{display:flex;align-items:center;gap:10px;padding:8px 6px 12px;border-bottom:1px solid var(--border);margin-bottom:6px;}
 /* v2.4.2 #D：子面板（添加到歌单 / 倍速 / 定时）左上角返回按钮。
@@ -927,8 +935,21 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 
 /* ============ 更多菜单：圆形图标网格 ============ */
 .fs-sheet-grip{ width:40px; height:4px; border-radius:4px; background:var(--border); margin:2px auto 16px; }
-.fs-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px 6px; padding:4px 6px 6px; }
-.fs-grid-item{ display:flex; flex-direction:column; align-items:center; gap:10px; background:transparent; border:none; color:var(--text); cursor:pointer; }
+/* v2.4.6 #8：宫格对称。
+   旧实现 grid-template-columns:repeat(4,1fr) —— 列宽被写死成 1/4，
+   而菜单项是 7 个（加歌单/倍速/作者/定时/顺序/少推荐/横屏），
+   第二行只有 3 个却仍从第 1 列开始排 → 整体靠左，右侧空一大块。
+   改用 flex-wrap + justify-content:center：项目数不足一行时自动居中。
+   每项宽度按 4 列反算（25% 减去间隙），与旧版视觉密度一致。 */
+.fs-grid{
+  display:flex; flex-wrap:wrap; justify-content:center; align-content:flex-start;
+  gap:14px 0; padding:4px 6px 6px;
+}
+.fs-grid-item{
+  flex:0 0 25%; max-width:25%;
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  background:transparent; border:none; color:var(--text); cursor:pointer;
+}
 .fs-grid-circle{ width:54px; height:54px; border-radius:50%; background:rgba(255,255,255,.06); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; transition:transform .12s, background .15s; }
 .fs-grid-item:active .fs-grid-circle{ transform:scale(.9); background:color-mix(in srgb,var(--accent) 22%, var(--panel2)); }
 .fs-grid-circle svg{ width:26px; height:26px; color:var(--text); }
@@ -1172,7 +1193,267 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
    于是横屏后左侧一大片空白、右侧内容被压成窄条。改为 fixed + 视口单位。 */
 .fs-land{ position:fixed !important; inset:0; width:100vw; height:100dvh; max-height:100dvh; }
 
+/* ==========================================================================
+   v2.4.6 #6：横屏真全屏（上/下空白根因修复）
+   --------------------------------------------------------------------------
+   v2.4.5 的坑：.fs-land 虽然改成了 fixed，但只在桌面规则里；移动端媒体查询里
+   .pv-root{} 的优先级更高，且 .fs-land 的 z-index 仍是 10 < .bottom-nav(70)。
+   于是横屏时：
+     · 底部 Tab 仍浮在横屏画面之上 → 底部一条空白/异物；
+     · 顶部状态栏区（.pv-player 的 padding-top: calc(6px + --sat)）仍在撑高度；
+     · 进度条被 .fs-land-content 的 padding-bottom 顶在上方 → 用户说"进度条偏上"。
+   现在：横屏层抬到 z-index:78（高于 .bottom-nav 70、低于 3 点菜单 76？不——76<78，
+   所以菜单仍是 76 会被横屏盖住，因此把菜单同步抬到 92，见下方注释），
+   并用 :has() 隐藏底部 Tab；横屏内容 padding 收紧到安全区内，进度条贴底。
+   ========================================================================== */
+.fs-land{ z-index:78; }
+/* 横屏时隐藏底部 Tab（App 根节点带 .fs-land 类时生效）。
+   用 .pv-root 的兄弟选择器无法表达"祖先含横屏层"，所以由 JSX 给 <body> 挂标记类。 */
+body.landscape-on .bottom-nav{ display:none !important; }
+body.landscape-on .pv-root::before,
+body.landscape-on .pv-statusbar{ display:none !important; }
+/* 横屏内容区：上下只留安全区 + 一点呼吸位，让进度条真正贴近底边 */
+body.landscape-on .fs-land-content{
+  padding: calc(52px + var(--sat)) calc(28px + var(--sar)) calc(12px + var(--sab)) calc(28px + var(--sal));
+  justify-content:space-between; gap:10px;
+}
+body.landscape-on .fs-land-head{ margin-top:auto; }
+body.landscape-on .fs-land-bar{ margin-top:auto; }
+/* 横屏返回键：加大到 48px 圈 + 26px 图标（用户反馈"返回按钮要大一点"） */
+body.landscape-on .fs-land-back{ width:48px; height:48px; background:rgba(0,0,0,.42); backdrop-filter:blur(8px); }
+body.landscape-on .fs-land-back svg{ width:26px; height:26px; stroke-width:2.1; }
+/* 横屏层 z-index 78 高于原菜单值 76 —— 菜单已在上方统一抬到 92（见 .fs-menu-mask）。 */
+
 /* #15（原 v2.5.0 #7）：播放页顶栏配色加深。
    旧值 .pv-top:#dcdce2 是写死浅灰，.pv-ttl 又叠一层 muted —— 两层浅色叠加导致看不清。 */
 .pv-top{ color:var(--text); }
 .pv-ttl{ color:var(--text); opacity:.72; }
+
+/* ==========================================================================
+   v2.4.6 #10：我的音乐 → 歌单管理闭环
+   ========================================================================== */
+
+/* 头部 ⋮ 与行级 ⋮ 的定位锚点（菜单绝对定位到按钮左下方） */
+.head-more{ position:relative; flex:0 0 auto; }
+.rowmenu-wrap{ position:relative; flex:0 0 auto; }
+
+/* 菜单遮罩：只负责「点任意处关闭」，透明不压暗，避免列表被黑罩影响阅读 */
+.rowmenu-mask{ position:fixed; inset:0; z-index:1; }
+
+/* 弹出菜单本体：行级 ⋮ 在列表内，z-index 需压过相邻行与底部 tab */
+.rowmenu{
+  position:absolute; right:0; top:calc(100% + 6px); z-index:2;
+  min-width:132px; padding:6px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:12px;
+  box-shadow:0 12px 32px rgba(0,0,0,.34);
+  animation:pop .12s ease;
+}
+.rowmenu button{
+  width:100%; display:flex; align-items:center; gap:9px;
+  padding:9px 10px; border:none; background:transparent;
+  color:var(--text); font-size:13.5px; text-align:left;
+  border-radius:8px; cursor:pointer;
+}
+.rowmenu button:hover{ background:var(--panel2); }
+.rowmenu button.danger{ color:var(--accent); }
+
+/* 歌单空态：图标 + 标题 + 说明 + 主行动按钮（此前只有一行灰字，没有入口） */
+.empty-cta{
+  display:flex; flex-direction:column; align-items:center; text-align:center;
+  gap:8px; padding:44px 20px 28px;
+}
+.empty-cta-ico{
+  width:64px; height:64px; border-radius:20px; display:grid; place-items:center;
+  color:var(--muted); background:var(--panel2); border:1px solid var(--border);
+  margin-bottom:4px;
+}
+.empty-cta-t{ font-size:15px; font-weight:600; }
+.empty-cta-s{ font-size:12.5px; color:var(--muted); line-height:1.6; margin-bottom:8px; }
+.empty-cta .fs-pill{ display:inline-flex; align-items:center; gap:6px; }
+
+/* 删除歌单二次确认：卡片式，不使用原生 confirm（WebView 里是英文 CANCEL/OK） */
+.confirm-mask{ z-index:95; }
+.confirm-box{
+  width:min(84vw, 320px); padding:22px 20px 16px;
+  background:var(--panel); border:1px solid var(--border); border-radius:16px;
+  box-shadow:0 20px 50px rgba(0,0,0,.4); animation:pop .14s ease;
+}
+.confirm-t{ font-size:16px; font-weight:700; text-align:center; }
+.confirm-s{ font-size:13px; color:var(--muted); line-height:1.7; text-align:center; margin-top:10px; }
+.confirm-acts{ display:flex; gap:10px; margin-top:20px; }
+.confirm-acts .fs-pill{ flex:1; justify-content:center; text-align:center; padding:11px; border-radius:12px; }
+.confirm-acts .fs-pill.ghost{ background:var(--panel2); color:var(--text); border:1px solid var(--border); }
+.confirm-acts .fs-pill.danger{ background:var(--accent); color:#fff; border:none; font-weight:600; }
+
+/* ==========================================================================
+   v2.4.6 #4：播放页封面「变大 + 垂直居中」
+   --------------------------------------------------------------------------
+   旧实现两个问题：
+   ① 尺寸写死 240×240（设计稿 260，且未随屏宽自适应）—— 用户反馈"没变大"。
+   ② 垂直居中靠 .pv-player 的 align-items:center（**交叉轴**居中，即水平方向）。
+      主轴（纵向）上封面在标题之上、控制区 margin-top:auto 贴底，
+      于是封面 + 标题挤在顶部，控件挤在底部，中间空一大块 —— 用户反馈"没居中"。
+   修法：给封面套一层 .pv-art-slot，flex:1 + 纵向居中，让封面在
+   「顶栏之下 / 标题之上」这段可用空间里真正居中；尺寸改 min(78vw, 330px)。
+   ========================================================================== */
+.pv-art-slot{
+  flex:1 1 auto; min-height:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  width:100%; padding:6px 0;
+}
+.pv-cover{
+  width:min(78vw, 330px); height:min(78vw, 330px);
+  max-width:100%; max-height:100%;
+  border-radius:24px; margin:0;
+  box-shadow:0 24px 56px rgba(0,0,0,.52);
+}
+.pv-lyrics{
+  width:min(78vw, 330px); height:min(78vw, 330px);
+  max-width:100%; max-height:100%;
+  border-radius:24px; margin:0;
+}
+/* 标题/歌手紧跟封面下方，不再额外拉开距离（留白交给 .pv-art-slot 分配） */
+.pv-player .pv-title{ margin-top:14px; }
+.pv-player .pv-artist{ margin-top:5px; }
+
+/* 矮屏（含软键盘弹起、横屏小窗）：等比缩小，保证控制区不被挤出屏幕 */
+@media (max-height: 700px){
+  .pv-cover, .pv-lyrics{ width:min(56vw, 240px); height:min(56vw, 240px); }
+}
+@media (max-height: 580px){
+  .pv-cover, .pv-lyrics{ width:min(44vw, 172px); height:min(44vw, 172px); }
+}
+
+/* ==========================================================================
+   v2.4.6 #5：播放列表返回键再放大
+   --------------------------------------------------------------------------
+   v2.4.5 把圈放到 40px、图标 20→24px，用户实测仍嫌小。这次到位：
+   圈 44px、图标 26px、描边加重到 2.1 —— 44px 也是 Android 触控目标的最小推荐值。
+   （此前 JSX 里漏传 size，图标一直在用默认 22，CSS 的 24 只作用于 svg 元素；
+     现在 JSX 显式传 26，两边一致，不会再出现"改了没效果"。）
+   ========================================================================== */
+.fs-pl-head .icon{ width:44px; height:44px; border-radius:50%; }
+.fs-pl-head .icon svg{ width:26px; height:26px; stroke-width:2.1; }
+
+/* ==========================================================================
+   v2.4.6 #6：横屏模式返回键同步放大（用户第 4 张图反馈"返回按钮要大一点"）
+   ========================================================================== */
+.ld-back svg{ width:26px; height:26px; stroke-width:2.1; }
+
+/* v2.4.6 #7：PromptDialog 确认模式的说明文字 + 弹窗内边距校正 */
+.prompt-dialog{ width:min(86vw, 340px); }
+.prompt-message{ font-size:13.5px; line-height:1.75; color:var(--muted); margin:2px 0 4px; word-break:break-word; }
+.prompt-hint{ margin:8px 0 0; }
+.prompt-input{ margin-top:2px; }
+
+/* ==========================================================================
+   v2.4.6 #2：搜索页按设计稿重做
+   --------------------------------------------------------------------------
+   用户反馈「不是设计了搜索页 UI 吗？为什么没有改」、截图里「标题被截断」。
+   实际问题有三个，都在 CSS 层：
+   ① .searchtop 用 display:flex + 三个等宽子项，「搜索」按钮 flex-shrink:0、
+      返回键 flex:none，中间 .sinput 却只有 flex:1 没有 min-width:0 ——
+      flex 子项默认 min-width:auto，内容撑不下时反向挤压，输入框里已输入的
+      长歌名会被按钮压掉一截（视觉上就是「标题截断」）。
+   ② 搜索页复用了通用 .track-row，其 .tsrc 是块级占位，来源名单独占一列；
+      设计稿要求来源收进 .rw-sub 里做**行内小角标**（节省一整列宽度给标题）。
+   ③ 顶部没有独立搜索栏样式，滚动时输入框不上浮、结果从框下滑过。
+   ========================================================================== */
+
+/* ① 搜索顶栏：输入框吃掉全部剩余宽度，按钮永不被压缩 */
+.searchview .searchtop{ gap:8px; align-items:center; }
+.searchview .searchtop .sinput{ flex:1 1 auto; min-width:0; }
+.searchview .searchtop .sinput input{ width:100%; min-width:0; }
+.searchview .searchtop .sback{ flex:0 0 auto; }
+.searchview .searchtop .primary{
+  flex:0 0 auto; min-width:64px; padding:0 14px;
+  display:inline-flex; align-items:center; justify-content:center;
+}
+/* 窄屏（≤360px）时把「搜索」按钮收成图标，把宽度全让给输入框 */
+@media (max-width: 360px){
+  .searchview .searchtop .primary{ min-width:48px; padding:0 10px; font-size:0; }
+  .searchview .searchtop .primary::after{ content:'搜'; font-size:14px; }
+}
+
+/* ② 搜索结果行：标题占满剩余宽度，来源做行内角标（设计稿 .rw-*） */
+.searchview .row-head{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 14px 4px; font-size:12px; color:var(--muted);
+}
+.searchview .row-head b{ color:var(--text); font-size:12.5px; font-weight:600; }
+
+/* 结果行对齐设计稿 .row：46px 封面 + 一份 meta + 操作区 */
+.searchview .track-row{
+  align-items:center; gap:11px; padding:9px 14px; border-radius:0;
+}
+.searchview .track-row:hover{ background:var(--panel2); }
+.searchview .track-row .tcover{
+  width:46px; height:46px; border-radius:9px; flex:0 0 auto;
+}
+.searchview .track-row .tmain{ flex:1 1 auto; min-width:0; }
+.searchview .track-row .ttitle{
+  font-size:14px; font-weight:600;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.searchview .track-row .tsub{
+  font-size:11.5px; color:var(--muted); margin-top:2px;
+  display:flex; align-items:center; gap:6px;
+  white-space:nowrap; overflow:hidden;
+}
+/* 来源角标：行内小胶囊，不再单独占一列 */
+.searchview .track-row .tsub .tsrc-inline{
+  flex:0 0 auto; padding:0 5px; border-radius:4px;
+  background:rgba(255,255,255,.08); color:#b9bdc9; font-size:10px; line-height:15px;
+}
+.searchview .track-row .tsrc{ display:none; } /* 老的独立来源列：搜索页隐藏 */
+.searchview .track-row .tactions{ flex:0 0 auto; gap:2px; }
+.searchview .track-row .tactions .mini{
+  width:30px; height:30px; border-radius:50%;
+  background:transparent; border:none; color:var(--muted);
+}
+.searchview .track-row .tactions .mini:hover{ background:var(--panel3); color:var(--text); }
+.searchview .track-row .tactions .mini.fav{ color:var(--accent); }
+
+/* ③ 来源筛选 tab：横向可滚、无滚动条（设计稿 .src-tabs / .st） */
+.searchview .src-tabs{
+  display:flex; gap:7px; padding:8px 14px 10px;
+  overflow-x:auto; scrollbar-width:none; flex:none;
+}
+.searchview .src-tabs::-webkit-scrollbar{ display:none; }
+.searchview .src-tab{
+  padding:5px 13px; border-radius:15px;
+  background:var(--panel2); border:1px solid var(--border);
+  color:var(--muted); font-size:12px; white-space:nowrap; flex:0 0 auto; cursor:pointer;
+}
+.searchview .src-tab.on{
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:#fff; border-color:transparent; font-weight:600;
+}
+
+/* 搜索历史/气泡区在搜索页的留白（贴紧顶栏，不要顶到结果区） */
+.searchview .search-history{ padding:6px 14px 0; }
+.searchview .err{ margin:8px 14px 0; }
+
+/* ==========================================================================
+   v2.4.6 #6（续）：横屏进度条贴底 + 上下不再留白
+   --------------------------------------------------------------------------
+   用户：「横屏模式为什么不是全屏呢？上边下边都有空白。底部进度条要再往下面一点。」
+   根因：.fs-land-content 是 justify-content:center + 上下各 64/28px 内边距，
+   内容整体居中 → 进度条离底边还有 28px + 时间行的距离，看起来"偏上"；
+   而真正的空白来自 .fs-land 的 linear-gradient 背景在上下两端比内容区更暗，
+   叠上 .fs-land-content 的 padding，就呈现出两条"带子"。
+   修法见下方 body.landscape-on 规则（已在 #6 段落里写过 padding）：
+   这里补「进度条以下的区域也吃背景色」与时间行间距，让底边不再显空。
+   ========================================================================== */
+body.landscape-on .fs-land{
+  background:var(--bg);
+}
+body.landscape-on .fs-land-content{ justify-content:space-between; }
+body.landscape-on .fs-land-lyric{
+  flex:1 1 auto; min-height:0; display:flex;
+  flex-direction:column; align-items:center; justify-content:center;
+}
+body.landscape-on .fs-land-bar{ margin-bottom:2px; }
+body.landscape-on .fs-land-times{ margin-top:4px; margin-bottom:0; }
