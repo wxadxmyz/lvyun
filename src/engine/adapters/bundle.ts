@@ -146,6 +146,25 @@ export function createBundleSource(cfg: SourceConfig): MediaSource {
   /** 取出子源；带缓存 */
   const subs = () => loadSubs(cfg);
 
+  /**
+   * v2.4.10 #2：把子站结果包成「聚合源视角」的 item。
+   *
+   * 抽成函数是因为渐进渲染要**重复调用**（每个子站落地一次），
+   * 内联在 forEach 里会导致同一段编码逻辑写两遍、日后改一处漏一处。
+   */
+  function wrapItem(it: MediaItem, idx: number, list: SourceConfig[], own: SourceConfig): MediaItem {
+    return {
+      ...it,
+      // id 编码子站下标 → 播放/歌词/详情能路由回去（见文件头说明）
+      id: wrapId(idx, it.id),
+      // sourceId 必须是 bundle 自己的 id，否则 resolvePlay 找不到配置
+      sourceId: own.id,
+      // sourceName 保留子站名 → 搜索页「来源 tab」按子站分组展示
+      sourceName: it.sourceName || list[idx].name || own.name,
+      raw: { ...(it.raw ?? {}), __subIdx: idx, __subName: list[idx].name },
+    };
+  }
+
   /** 按 item.id 里的子站下标取子源，顺带把 id 还原成子源认识的原 id */
   async function route(idOrItem: MediaItem | string) {
     const raw = typeof idOrItem === 'string' ? idOrItem : String(idOrItem?.id ?? '');
@@ -163,34 +182,51 @@ export function createBundleSource(cfg: SourceConfig): MediaSource {
   }
 
   return {
-    async search(keyword: string, page?: number): Promise<MediaItem[]> {
+    async search(
+      keyword: string,
+      page?: number,
+      onPartial?: (items: MediaItem[]) => void,
+    ): Promise<MediaItem[]> {
       const list = await subs();
+
+      // v2.4.10 #2：子站级渐进渲染。
+      //
+      // 旧实现是 Promise.all 四个子站，**全部回来才 return** —— 于是「谁快」毫无意义，
+      // 用户始终要等最慢的那个子站（酷我/咪咕动辄 8~15s）才能看到任何结果。
+      //
+      // 现在每个子站一回来就通过 onPartial 推一次「当前已收到的全部结果」。
+      // 上层（engine/index.ts → SearchView）的 onPartial 已经就绪，
+      // 这里只需要在 MediaSource 上加一条可选通道把信号透传出去。
+      //
+      // 兼容性：onPartial 可选，老调用方（只传 2 个参数）行为完全不变。
+      const buckets: MediaItem[][] = list.map(() => []);
+
+      /** 把当前 buckets 展开成「已上屏」的列表（含 id 编码与 sourceId 改写） */
+      const collect = (): MediaItem[] => {
+        const out: MediaItem[] = [];
+        buckets.forEach((items, idx) => {
+          for (const it of items) out.push(wrapItem(it, idx, list, cfg));
+        });
+        return out;
+      };
+
       const results = await Promise.all(
-        list.map(async (sub) => {
+        list.map(async (sub, idx) => {
           try {
-            return await createSource(sub).search(keyword, page ?? 1);
+            buckets[idx] = await createSource(sub).search(keyword, page ?? 1);
           } catch {
-            return [] as MediaItem[]; // 单个子站挂了不影响其它子站
+            buckets[idx] = []; // 单个子站挂了不影响其它子站
           }
+          // 每个子站落地就推一次增量 —— 先回来的子站先上屏
+          if (onPartial) {
+            try { onPartial(collect()); } catch { /* 回调异常不该影响搜索 */ }
+          }
+          return buckets[idx];
         })
       );
-      const out: MediaItem[] = [];
-      let failed = 0;
-      results.forEach((items, idx) => {
-        if (!items.length) failed++;
-        for (const it of items) {
-          out.push({
-            ...it,
-            // id 编码子站下标 → 播放/歌词/详情能路由回去（见文件头说明）
-            id: wrapId(idx, it.id),
-            // sourceId 必须是 bundle 自己的 id，否则 resolvePlay 找不到配置
-            sourceId: cfg.id,
-            // sourceName 保留子站名 → 搜索页「来源 tab」按子站分组展示
-            sourceName: it.sourceName || list[idx].name || cfg.name,
-            raw: { ...(it.raw ?? {}), __subIdx: idx, __subName: list[idx].name },
-          });
-        }
-      });
+
+      const out = collect();
+      const failed = results.filter((r) => !r.length).length;
       if (!out.length && failed === list.length) {
         throw new Error(`订阅下 ${list.length} 个子站全部搜索失败`);
       }

@@ -180,6 +180,9 @@ button.fav, .fav { color: var(--danger) !important; }
 .search-bar.big input { flex: 1; padding: 13px 14px; font-size: 15px; }
 .search-ico { align-self: center; font-size: 18px; opacity: .7; }
 .loading, .empty { color: var(--muted); padding: 24px 4px; }
+/* v2.4.10 #2：子站级渐进渲染进度提示（「已收到 N/M 个源，正在补齐…」）。
+   比 .loading 轻 —— 它是常态进行中的信息，不该和「正在搜索」抢视觉重量。 */
+.src-progress { color: var(--muted); font-size: 12px; padding: 8px 4px 2px; opacity: .8; }
 .err { color: var(--danger); padding: 10px 0; }
 .search-history { margin-bottom: 18px; }
 .sh-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; color: var(--muted); font-size: 13px; }
@@ -1016,15 +1019,42 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .fs-land-head{ text-align:center; }
 .fs-land-title{ font-size:clamp(22px,4vw,30px); font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .fs-land-sub{ font-size:14px; color:var(--muted); }
-.fs-land-bar{ width:100%; max-width:760px; height:4px; border-radius:4px; background:rgba(255,255,255,.14); position:relative; margin-top:6px; overflow:hidden; }
-.fs-land-fill{ position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg,var(--accent),var(--accent2)); border-radius:4px; }
-.fs-land-times{ display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-top:6px; }
+/* v2.4.10 #11：时间行从 .fs-land-bar 内部移出（旧结构见下方 .fs-land--legacy 注释），
+   改由 .fs-land-progress 包住「进度条 + 时间行」两层，各自独立排版。 */
+.fs-land-progress{
+  width:100%; max-width:760px; flex:none;
+  display:flex; flex-direction:column; gap:6px;
+  cursor:pointer;
+}
+.fs-land-bar{ width:100%; height:4px; border-radius:4px; background:rgba(255,255,255,.14); position:relative;
+              /* v2.4.10 #10：touch-action:none 让指针拖动不被浏览器当成页面滚动抢走 */
+              cursor:pointer; touch-action:none;
+              /* v2.4.10 #11：去掉 overflow:hidden。
+                 它当年是为了把填充条的圆角裁掉，但同时也把子元素（时间行）裁没了。
+                 时间行已移出，这里保留 overflow:visible 让滑块能正常露出。 */
+              overflow:visible; }
+/* v2.4.10 #10：命中区扩大 —— 4px 高的轨道手指按不中，
+   上下各撑到 ~20px（与竖屏 .pv-bar::before 同一手法）。 */
+.fs-land-bar::before{ content:''; position:absolute; left:0; right:0; top:-18px; bottom:-18px; }
+.fs-land-fill{ position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg,var(--accent),var(--accent2)); border-radius:4px; pointer-events:none; }
+/* v2.4.10 #10：新增滑块。13px 与竖屏 .pv-bar .pv-thumb 保持一致，视觉语言统一。 */
+.fs-land-bar .fs-land-thumb{ position:absolute; top:50%; width:13px; height:13px; border-radius:50%; background:#fff;
+                             transform:translate(-50%,-50%); box-shadow:0 1px 4px rgba(0,0,0,.4);
+                             pointer-events:none; transition:left .1s linear; }
+.fs-land-bar .fs-land-thumb.zero{ display:none; }
+.fs-land-times{ display:flex; justify-content:space-between; font-size:12px; color:var(--muted); }
 /* v2.4.7 #4：横屏控制行（上一曲 / 暂停·播放 / 下一曲）—— 此前横屏只有进度条 */
-.fs-land-ctrls{ display:flex; align-items:center; justify-content:center; gap:42px; flex:none; }
-.fs-land-ctrl{ width:54px; height:54px; border-radius:50%; border:none; background:rgba(255,255,255,.14); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; }
-.fs-land-ctrl.play{ width:66px; height:66px; background:linear-gradient(135deg,var(--accent),var(--accent2)); }
-.fs-land-ctrl svg{ width:24px; height:24px; display:block; fill:currentColor; }
-.fs-land-ctrl.play svg{ width:30px; height:30px; }
+/* v2.4.10 #12：横屏控制行缩小 + 下移。
+   ---------------------------------------------------------------------------
+   原值 54/66、图标 24/30、gap 42 —— 横屏时屏幕高度只有 ~360css px，
+   66px 的播放键占了近 1/5，加上歌词区和进度条，整行被挤得「上不去下不来」
+   （实测控件圆心 y≈0.725、进度条 y≈0.768，只差 5%，几乎贴在一起）。
+   按清单数值：普通键 46、播放键 58、图标 20/26、间距 36。 */
+.fs-land-ctrls{ display:flex; align-items:center; justify-content:center; gap:36px; flex:none; }
+.fs-land-ctrl{ width:46px; height:46px; border-radius:50%; border:none; background:rgba(255,255,255,.14); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.fs-land-ctrl.play{ width:58px; height:58px; background:linear-gradient(135deg,var(--accent),var(--accent2)); }
+.fs-land-ctrl svg{ width:20px; height:20px; display:block; fill:currentColor; }
+.fs-land-ctrl.play svg{ width:26px; height:26px; }
 /* 3 秒自动隐藏：标题/歌词 chrome 淡出，只剩当前行歌词；
    但返回键(.fs-land-back)始终常驻，保证任何时刻都能退出横屏。 */
 .fs-land.hidden .fs-land-content { opacity:0; pointer-events:none; }
@@ -1279,30 +1309,76 @@ body.landscape-on .pv-root{ position:fixed; inset:0; z-index:60; background:var(
    旧值 padding-top: calc(52px + var(--sat)) 里的 52px 是写死的，当年为给左上角
    48px 返回键让位；但返回键此时已是 absolute/fixed 独立图层，不再撑占文档流，
    于是这 52px 变成纯背景死空间（横屏 --sat 又常为 0，等于凭空多一条带子）。
-   返回键改成 fixed 脱离内容流后，内容区顶部只留 8px 呼吸位。 */
+   返回键改成 fixed 脱离内容流后，内容区顶部只留 8px 呼吸位。
+
+   v2.4.10 #14：横屏上下空白 —— 这版把根因量准了。
+   ---------------------------------------------------------------------------
+   截图逐行采样（dpr=3.5）：顶部空白 148 device px = 42.3 css px，
+   底部空白 54 device px = 15.4 css px；两处颜色都精确等于 #f4f5f9（App 的 --bg），
+   不是系统状态栏/手势条的白色 —— 所以是律云自己画出来的。
+
+   上边 42.3px = padding-top 8px + --sat 34px（42 × 3.5 = 147，实测 148 ✅）
+     · 8px  ← 本条规则
+     · 34px ← **src/lib/safeArea.ts 在 JS 里注入的 SAT_FALLBACK**
+       横屏时 Android 的 env(safe-area-inset-top) 返回 0，
+       safeArea.ts 的 `readPx('--sat') <= 0` 成立 → 注入 34px。
+       [这就是前几版一直没修对的原因：一直在改 styles.css 里的安全区变量，
+        而真正生效的是 JS 注入的那个值。]
+
+   下边 15.4px = padding-bottom 8px + --sab ≈ 7.4px（横屏手势条变窄后的真实值）。
+   横屏的手势条是贴在**侧边**的，底部这 15.4px 什么也不挡。
+
+   所以：safeArea.ts 侧把横屏的 --sat/--sab 归零（治本，见该文件），
+   这里同步把 padding 收到 0 / 4px（配合，避免再叠一层）。 */
 body.landscape-on .fs-land-content{
-  padding: 8px calc(28px + var(--sar)) calc(8px + var(--sab)) calc(28px + var(--sal));
+  /* v2.4.10 #14：top 由 8px → 0（横屏没有状态栏）；bottom 由 8px → 4px（只留呼吸位） */
+  padding: 0 calc(28px + var(--sar)) 4px calc(28px + var(--sal));
   justify-content:space-between; gap:10px;
 }
 /* #4.2：底部呼吸位 12px → 8px（配合 --sab 兜底抬到 28px，贴住手势条又不留空带） */
 
+/* v2.4.10 #12：控制行显式下移。
+   ---------------------------------------------------------------------------
+   #14 把上下空白去掉后，.fs-land-content 的可用高度变大约 58px。
+   由于容器是 justify-content:space-between，多出来的空间会**全部分给歌词区**
+   （它是唯一的 flex:1），控件位置反而上移 —— 与「按钮要往下走」的诉求相反。
+   所以必须给控制行显式下移：margin-top:auto 把剩余空间全部推到它上方，贴向底部；
+   margin-bottom 再与进度条拉开距离，避免"贴在进度条上"。 */
+body.landscape-on .fs-land-ctrls{
+  margin-top:auto;
+  margin-bottom:14px;
+}
 /* #4.3：进度条不再被歌词挤掉。
    旧规则只有 .fs-land-lyric 吃 flex:1，head/ctrls/bar 都是默认 flex:0 1 auto
    但被 space-between + 歌词抢空间后压到容器外，外层 overflow:hidden 直接裁掉，
    表现为「进度条看不见」。这里显式给非歌词区 flex:none，flex 只留给歌词区。 */
 body.landscape-on .fs-land-head{ flex:none; margin-top:0; }
 body.landscape-on .fs-land-ctrls{ flex:none; }
-body.landscape-on .fs-land-bar{ flex:none; margin-top:6px; }
-body.landscape-on .fs-land-times{ flex:none; }
+body.landscape-on .fs-land-progress{ flex:none; margin-top:0; }
+body.landscape-on .fs-land-bar{ flex:none; margin-top:0; }
 
 /* #4.5 + #4.7 + #4.6：控件显示态的歌词区 —— 锁 3 行、可上下滑、当前行高亮、
    字号上限锁 29px（隐藏态 .ld-solo 是 29px，控件显示时不能超过它，否则隐藏瞬间
-   字会「变小」，观感像跳变）。 */
+   字会「变小」，观感像跳变）。
+
+   v2.4.10 #8：max-height 由 112px 改为精确的「3 行」高度。
+   ---------------------------------------------------------------------------
+   旧注释写「3 行 × 24px × 1.4 ≈ 100px，留一点余量」——这个算法漏了两项：
+     · 行间距 gap:6px（3 行之间有 2 个间隙）
+     · active 行字号被放大到 28px（行高 28 × 1.4 = 39.2px，不是 33.6px）
+   精确值是：33.6 × 2 + 39.2 + 6 × 2 = 118.4px
+   而 112 < 118.4，装不下 3 行却又能靠 overflow-y:auto 多露 6.4px
+   → 上下各露出半行，看起来显示的是 5 行。
+
+   这里直接用 calc 把三项写进去，以后改字号 / gap 只要同步改这行即可。
+   配合 overflow:hidden（见下）彻底不露第四行。 */
 body.landscape-on .fs-land-lyric{
   flex:1 1 auto;
   min-height:0;
-  max-height:112px;                 /* 3 行 × 24px × 1.4 ≈ 100px，留一点余量 */
+  /* 普通行 24×1.4=33.6 · active 行 28×1.4=39.2 · 两处 gap 各 6 */
+  max-height: calc(33.6px * 2 + 39.2px + 6px * 2);
   overflow-y:auto;
+  overflow-x:hidden;
   touch-action:pan-y;               /* 允许纵向滑动，避免被父层的点击/滑动手势吃掉 */
   -webkit-overflow-scrolling:touch;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -1310,6 +1386,13 @@ body.landscape-on .fs-land-lyric{
 }
 body.landscape-on .fs-land-lyric .ld-line{ font-size:24px; line-height:1.4; }
 body.landscape-on .fs-land-lyric .ld-line.active{ font-size:28px; } /* ≤29px 上限 */
+
+/* v2.4.10 #8（第二道保险）：只让「当前行 ±1」三行参与布局，其余 display:none。
+   ---------------------------------------------------------------------------
+   即便 max-height 算错了、或将来有人把字号调大，也绝不会露出第四行 ——
+   因为第四行压根不在布局里（不是被裁掉，是不渲染）。
+   这比单纯调高度更稳：高度算错只会让三行间距略有出入，不会破坏「只显示三行」这条规则。 */
+body.landscape-on .fs-land-lyric .ld-line.ld-dim{ display:none; }
 
 /* #4.1（续）：横屏返回键改 fixed 并缩到 44px。
    fixed 让它彻底脱离 .fs-land-content 的 padding 计算，才可能把顶部压到 8px。 */
@@ -1322,6 +1405,42 @@ body.landscape-on .fs-land-back{
   transition:opacity .3s;
 }
 body.landscape-on .fs-land-back svg{ width:26px; height:26px; stroke-width:2.1; }
+
+/* v2.4.10 #15：横屏 Toast 挪到右上角。
+   ---------------------------------------------------------------------------
+   用户截图红圈里那行「小文字」就是 Toast（toast.tsx 的 .toast-wrap）。
+   它是 position:fixed + z-index:100，而播放页 .pv-root 是 z-index:60 ——
+   所以它浮在所有内容之上。竖屏时停在屏幕底部 96px 处，不挡什么；
+   横屏时同样的 bottom 定位恰好压在顶部歌名/歌手那一行（.fs-land-head）上，
+   看起来就像"那里莫名其妙多了一行字"。
+
+   移到右上角：既不压标题，也与左上角的返回键形成对角，互不干扰。
+   （--sat 横屏已为 0，这里用 16px 固定值即可。） */
+body.landscape-on .toast-wrap{
+  left:auto; right:16px; bottom:auto; top:16px;
+  transform:none;
+  align-items:flex-end;
+}
+
+/* v2.4.10 #13：旋转窗口期的透明输入锁。
+   覆盖全屏、吃掉所有点击（包括底部 Tab），视觉上完全不可见。
+   z-index 取 200 —— 高于 Toast(100)、菜单(92)、横屏层(78)，
+   保证旋转过程中没有任何元素能抢到点击。 */
+.ori-lock{
+  position:fixed; inset:0; z-index:200;
+  background:transparent;
+  pointer-events:auto;
+  cursor:default;
+}
+
+/* v2.4.10 #14（双保险）：横屏状态栏垫片归零。
+   ---------------------------------------------------------------------------
+   .pv-root::before 会单独画一条 --sat 高、--bg 色的带子（竖屏垫状态栏区用）。
+   横屏没有状态栏，这条带子纯属多余 —— 虽然 .fs-land(z-index:78) 盖在它上面、
+   它不是那 148px 的直接来源，但它会影响「还没进 .fs-land 的旋转中间态」
+   （那段空窗里 .fs-land 尚未渲染，这条带子会露出来）。
+   --sat 已由 safeArea.ts 在横屏下置 0，这里再硬置一次，保证任何时序都不会露。 */
+body.landscape-on .pv-root::before{ height:0 !important; }
 
 /* #4.4：返回键并入 3 秒自动隐藏（原为常驻）。
    隐藏后不再拦截点击 —— 点屏幕任意处由 .fs-land 的 onClick 唤回控制区。 */
@@ -1431,11 +1550,11 @@ body.landscape-on .fs-land.hidden .fs-land-back{ opacity:0; pointer-events:none;
   gap:1px; text-align:center;
 }
 .pv-now-title{
-  max-width:100%; font-size:17px; font-weight:800; line-height:1.25; color:var(--text);
+  max-width:100%; font-size:20px; font-weight:800; line-height:1.25; color:var(--text);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .pv-now-sub{
-  max-width:100%; font-size:12px; color:var(--sub, var(--muted)); line-height:1.3;
+  max-width:100%; font-size:13px; color:var(--sub, var(--muted)); line-height:1.3;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 

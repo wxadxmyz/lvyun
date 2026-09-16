@@ -99,18 +99,40 @@ export default function MusicApp() {
   });
   navRef.current = { tab, fromTab, fromSearch };
 
+  // v2.4.10 #7：fromSearch 的 ref 镜像。
+  //
+  // 返回键桥（__onAndroidBack / onBackButton）是在 useEffect([]) 里注册一次的闭包，
+  // 它捕获的是**首次渲染**的 handleBack —— 那时 fromSearch 恒为 false。
+  // 之前靠 navRef.current 兜住 tab/fromTab，但 fromSearch 没进这个镜像，
+  // 于是「从搜索进播放页 → 返回」会走不到 fromSearch 分支，直接回底层 tab。
+  // 这里把它也同步进 ref，让返回行为在整条链路上都读得到最新值。
+  const fromSearchRef = useRef(false);
+  fromSearchRef.current = fromSearch;
+
   const handleBack = (): boolean => {
-    // 1) 先问栈：已挂载的浮层/子页各自决定是否消费
-    if (dispatchBack()) return true;
     const s = navRef.current;
-    // 2) v2.4.8 #7：播放页返回时，若它是由「搜索浮层」点歌进入的，优先回到搜索浮层
-    //    （而不是回到底层 tab）。对齐主流 App「搜歌试听 → 返回继续搜」的预期。
+    // ⚠️ v2.4.10 #7：播放页分支必须**排在 dispatchBack() 之前**。
+    //
+    // 旧顺序是先问栈、再判 tab === 'player'。而搜索浮层（SearchView）在播放页打开时
+    // 并没有卸载 —— 它只是被 `.main.player-open{display:none}` 藏起来，返回栈上的
+    // 那条 handler 一直有效。于是「搜歌 → 点歌进播放页 → 按返回」时：
+    //   第 1 步 dispatchBack() 问到了 SearchView，
+    //   它的 handler 看到输入框有内容，执行 setKw('') + setItems([]) 并 return true
+    //   → 返回被"消费"掉了，播放页纹丝不动，搜索结果却被清空。
+    // 用户要的是「返回 → 回到刚才那份搜索结果」，不是「返回 → 结果没了」。
+    //
+    // 正确语义：播放页是**全屏层**，返回的第一优先级就是退出它（回到搜索浮层，
+    // 且保留结果）；只有不在播放页时，才轮到浮层自己决定怎么处理返回。
     if (s.tab === 'player') {
-      if (s.fromSearch) { setSearchOpen(true); setTab(s.fromTab); return true; }
+      // v2.4.8 #7：若它是由「搜索浮层」点歌进入的，回到搜索浮层（保留结果与滚动位置）
+      // v2.4.10 #7：fromSearch 读 ref 镜像，避免闭包捕获首帧的 false。
+      if (fromSearchRef.current) { setSearchOpen(true); setTab(s.fromTab); return true; }
       setTab(s.fromTab);
       return true;
     }
-    // 3) 栈空 → 外层分级：其它 tab 回到主页
+    // 1) 不在播放页 → 问栈：已挂载的浮层/子页各自决定是否消费
+    if (dispatchBack()) return true;
+    // 2) 栈空 → 外层分级：其它 tab 回到主页
     if (s.tab !== 'home') { setTab('home'); return true; }
     return false; // 已经在主页 → 交给系统退出
   };

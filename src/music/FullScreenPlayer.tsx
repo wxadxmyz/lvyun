@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayer, fmtTime, player, getAudioElement } from '../lib/playerStore';
 import { getEqGains, setEqGains, subscribeEq, EQ_PRESETS, EQ_BANDS } from '../lib/spectrum';
 import { useSettings } from '../lib/settings';
@@ -194,10 +194,45 @@ export function FullScreenPlayer({
   // v2.4.6 #6：横屏时给 <body> 挂 .landscape-on 标记。
   // 底部 Tab（.bottom-nav）挂在 App 根层、与播放页同级，CSS 无法从 .fs-land 反向选中它，
   // 所以用 body 标记做开关：横屏隐藏 Tab + 收紧内容 padding，进度条才能贴到底边。
+  //
+  // v2.4.10 #13：改为「等布局稳定后再挂」。
+  //
+  // 旧实现是同步 toggle —— showLandscape 一置 true，.landscape-on 立刻生效，
+  // 而它触发的是一整套重排（.main.player-open display:none、.pv-root 转 fixed），
+  // 此刻 .fs-land 还没完成布局；重排结果就是「整屏空白」，用户必须再点一下才恢复。
+  // 这就是「横屏要点两下才进得去」的主要表现之一。
+  //
+  // 现在用双 requestAnimationFrame 把挂类推迟到「下一帧渲染完成后」：
+  // 第一帧让 React 把 .fs-land 挂进 DOM，第二帧等浏览器完成布局，再挂类触发重排。
+  // 卸载时（含 showLandscape 变 false）用 cleanup 取消未执行的 rAF，避免迟到执行。
   useEffect(() => {
-    document.body.classList.toggle('landscape-on', showLandscape);
-    return () => document.body.classList.remove('landscape-on');
+    if (!showLandscape) {
+      document.body.classList.remove('landscape-on');
+      return;
+    }
+    let raf1 = 0, raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        document.body.classList.add('landscape-on');
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      document.body.classList.remove('landscape-on');
+    };
   }, [showLandscape]);
+
+  // v2.4.10 #13：旋转期间锁住输入的透明遮罩。
+  //
+  // 旋转校验最长要 6s（orientation.ts 的 VERIFY_MAX_RETRY），这段时间里
+  // 底部 Tab 还在（.landscape-on 未挂）、播放页已开 —— 用户随手点一下 Tab 就
+  // goTab('home') → tab !== 'player' → FullScreenPlayer **整棵卸载**
+  // → 卸载 effect 发 portrait → 转回竖屏 → 掉回主页。
+  // 用户观感是「点了横屏，结果跳到别的页面，还得切回来点第二下」。
+  //
+  // 用一层 pointer-events:auto 的透明遮罩把这段窗口期封住，旋转完成即撤。
+  const [oriLocked, setOriLocked] = useState(false);
 
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
   // v2.4.9 #5.7：sleepTimer ref 已随定时器一起搬到 AudioHost，这里不再保留
@@ -229,23 +264,50 @@ export function FullScreenPlayer({
   };
 
   // 歌词：优先用带时间轴的 LyricLine，其次降级的字符串数组
-  const lyricLines: { time: number; text: string }[] = Array.isArray(it.lyric)
-    ? it.lyric.map((l: any) => ({ time: l.time, text: l.text }))
-    : Array.isArray(it.raw?.lyric)
-    ? (it.raw.lyric as string[]).map((t: string) => ({ time: 0, text: t }))
-    : [];
+  //
+  // v2.4.10 #4：加 useMemo —— 旧实现每次渲染都 .map() 出新数组，
+  // 于是下游任何 state 变化（连 isPlaying 翻一下）都会新建 lyricLines，
+  // 进而让「自动跟随」effect 的一个隐性依赖（渲染期间重建的 DOM 行）反复触发。
+  // 用 useMemo 把引用稳定在「歌词内容真正变化时」。
+  const lyricLines: { time: number; text: string }[] = useMemo(
+    () =>
+      Array.isArray(it.lyric)
+        ? it.lyric.map((l: any) => ({ time: l.time, text: l.text }))
+        : Array.isArray(it.raw?.lyric)
+        ? (it.raw.lyric as string[]).map((t: string) => ({ time: 0, text: t }))
+        : [],
+    [it.lyric, it.raw?.lyric],
+  );
   const aLine = lyricLines.length ? activeIndex(lyricLines, state.progress) : -1;
 
   // v2.4.9 #3.2 / #4.7：歌词自动跟随（竖屏全屏歌词页 + 横屏 3 行歌词区共用）。
   //   1) 用 scrollBy + 差值计算，不用 scrollIntoView —— 后者在部分 WebView 上会
   //      连带把祖先容器一起滚，横屏时会把整页顶歪。
   //   2) 用户手动滑动后 1.5s 内不抢滚动权，否则「刚滑上去看两句又被拽回当前行」。
+  //
+  // v2.4.10 #4：三处关键修正（旧实现「上滑两下歌词就空了」的根因）。
+  //
+  //   ① 手动 / 程序滚动必须分开标记。
+  //      旧实现把 onScroll 直接当「用户手滑」——但 scrollBy({behavior:'smooth'}) 自己
+  //      也会触发 scroll 事件，于是程序滚一下就把自己锁 1.5s，用户再滑就彻底失控。
+  //      现在只有 onTouchStart / onWheel 才置手动标志；onScroll 只做同步。
+  //
+  //   ② 改用绝对赋值 scrollTop，不再 scrollBy。
+  //      scrollBy 是**相对**位移：若上一次滚动还没结束（smooth 动画在跑），
+  //      新一次 delta 会叠加在中间态上，越滚越远，最终滚过列表末尾 → 整屏空白。
+  //      绝对定位天然幂等 —— 重复调用结果一致，不会累积。
+  //
+  //   ③ delta 加合理性校验：超过容器高度 1.5 倍的位移一律丢弃。
+  //      歌词 DOM 重建的瞬间 getBoundingClientRect() 可能拿到未布局的中间态，
+  //      算出的 delta 会是个离谱的大数（几千 px）。旧实现照单全收 → scrollBy 直接
+  //      滚到尽头 → 「上滑两下歌词消失」。这里直接丢弃这种异常值。
   const ldScrollRef = useRef<HTMLDivElement>(null);
   const landLyricRef = useRef<HTMLDivElement>(null);
   const lyricManualUntil = useRef(0);
   const markLyricManual = () => { lyricManualUntil.current = Date.now() + 1500; };
-  const onLyricScroll = markLyricManual;
-  const onLandLyricScroll = markLyricManual;
+  // v2.4.10 #4：只有真实的手势 / 滚轮才算「用户操作」，程序滚动不算。
+  const onLyricTouch = markLyricManual;
+  const onLyricWheel = markLyricManual;
   useEffect(() => {
     if (aLine < 0) return;
     if (Date.now() < lyricManualUntil.current) return;
@@ -255,8 +317,19 @@ export function FullScreenPlayer({
       if (!el) return;
       const boxRect = box.getBoundingClientRect();
       const elRect = el.getBoundingClientRect();
+      // ③ 布局未就绪（元素尺寸为 0）或位移离谱 → 丢弃，等下一次 aLine 变化再试。
+      //    这里用容器高度做上界：正常情况下目标行离中心不会超过半个容器高。
+      if (!boxRect.height || !elRect.height) return;
       const delta = elRect.top + elRect.height / 2 - (boxRect.top + boxRect.height / 2);
-      if (Math.abs(delta) > 4) box.scrollBy({ top: delta, behavior: 'smooth' });
+      if (!Number.isFinite(delta)) return;
+      if (Math.abs(delta) > boxRect.height * 1.5) return;
+      if (Math.abs(delta) < 4) return;
+      // ② 绝对赋值：scrollTop 是「目标行位于容器中心」的解析解，幂等且不会累积漂移。
+      const want = box.scrollTop + delta;
+      const max = box.scrollHeight - box.clientHeight;
+      const next = Math.max(0, Math.min(max, want));
+      if (!Number.isFinite(next) || Math.abs(next - box.scrollTop) < 1) return;
+      box.scrollTo({ top: next, behavior: 'smooth' });
     };
     centerOn(ldScrollRef.current);
     centerOn(landLyricRef.current);
@@ -288,16 +361,59 @@ export function FullScreenPlayer({
 
   // v2.4.2 #E：横屏真旋转 —— 对齐幕海 VideoPlayer.tsx:332。
   // showLandscape 变了就同步系统方向；退出（变 false）自动回竖屏（silent 不弹提示）。
+  //
+  // v2.4.10 #13：**方向指令的唯一入口**。
+  //
+  // 旧实现在这里和 MORE_ITEMS 的「横屏播放」按钮里**各发了一遍** requestOrientation。
+  // orientation.ts 每次调用都 `++verifyGen` 作废前一条校验链 ——
+  // 两遍调用导致第一遍的校验链被自己人干掉，只剩第二遍在跑；
+  // 而第二遍是从按钮点击那一刻起算，等桥 + 校验的窗口叠在一起，表现就是「转不过去」。
+  //
+  // 现在按钮只负责 setShowLandscape(true)，方向指令统一由本 effect 发。
+  // 失败时 onResult(false) 会 setShowLandscape(false) 回退，不会卡在"转了但没进横屏 UI"。
+  //
+  // ⚠️ 输入锁只在「进入横屏」时加。
+  //   本 effect 在 showLandscape=false 时同样会跑（含组件首次挂载）——
+  //   那时发的是静默的 portrait 归位，不该锁住任何东西，
+  //   否则「每次打开播放页，前 3 秒点什么都没反应」。
   useEffect(() => {
-    requestOrientation(showLandscape ? 'landscape' : 'portrait', {
-      silent: !showLandscape,
+    if (!showLandscape) {
+      // 退出 / 初始挂载：静默归位，不锁输入
+      requestOrientation('portrait', { silent: true });
+      setOriLocked(false);
+      return;
+    }
+    // 进入横屏：从这一刻到旋转完成（最长 ~6s）封住输入
+    setOriLocked(true);
+    let done = false;
+    const unlock = () => { if (!done) { done = true; setOriLocked(false); } };
+    requestOrientation('landscape', {
       toast: toast.push,
+      onResult: (ok) => {
+        unlock();
+        if (!ok) setShowLandscape(false); // 转不过去 → 不留在半横屏状态
+      },
     });
+    // 兜底解锁：桥不可用 / onResult 不回调时，4s 后强制解锁，避免界面卡死
+    const t = window.setTimeout(unlock, 4000);
+    return () => { clearTimeout(t); unlock(); };
   }, [showLandscape, toast]);
 
   // v2.4.2 #E：卸载归位 —— 退出播放页时强制回竖屏，避免遗留横屏状态把主页也带横了。
+  //
+  // v2.4.10 #13：只在「真的还处于横屏态」时补发。
+  //   正常退出路径（点返回 / 按系统返回）会先 setShowLandscape(false)，
+  //   那次归位由 [showLandscape] effect 负责（它会发 portrait 并清 .landscape-on）。
+  //   走到这里说明组件是在横屏仍未归位的情况下被卸载的（例如旋转窗口期里
+  //   父层把播放页换掉了）—— 这种"被动卸载"才需要补一枪 portrait，
+  //   否则会留下竖屏 App 顶着横屏标记的状态。
+  //   判据用 body 上的 .landscape-on 而不是内部标志位：它就是最终生效的那个状态。
   useEffect(() => {
-    return () => { requestOrientation('portrait', { silent: true }); };
+    return () => {
+      if (document.body.classList.contains('landscape-on')) {
+        requestOrientation('portrait', { silent: true });
+      }
+    };
   }, []);
 
   // 横屏点击：在「显示 / 隐藏」间切换，并重置 3 秒计时
@@ -338,32 +454,75 @@ export function FullScreenPlayer({
     },
     { key: 'less', icon: 'x-circle', label: '少推荐', onClick: () => { toast.push('已减少此类推荐'); setShowMenu(false); } },
     // v2.4.0 H1（方案 C）：删除「整屏歌词」菜单项，歌词统一由「点封面」全屏进入
-    // v2.4.2 #E：先请求系统旋转，成功才切横屏 UI —— 转不成功就不进 .fs-land，
-    // 彻底消灭「竖屏放大」假横屏（orientation.ts 内部已 toast 失败原因）。
+    //
+    // v2.4.10 #13：这里只置状态，**不再自己发方向指令**。
+    //   方向指令的唯一出口是上方那个 [showLandscape] effect —— 两处都发会让
+    //   orientation.ts 的 verifyGen 互相作废，旋转校验链永远跑不完（"要点两下"）。
     { key: 'land', icon: 'maximize', label: '横屏播放',
       onClick: () => {
         setShowMenu(false);
-        requestOrientation('landscape', {
-          toast: toast.push,
-          onResult: (ok) => { if (ok) setShowLandscape(true); },
-        });
+        setShowLandscape(true);
       } },
   ];
 
   // 进度百分比（粉红填充轨道 + 白色滑块）
-  const pct = state.duration > 0 ? Math.min(100, (state.progress / state.duration) * 100) : 0;
+  //
+  // v2.4.10 #5：加 Number.isFinite 守卫 + 「非空态保留滑块」。
+  //   旧实现 `state.duration > 0 ? ... : 0`。duration 一旦是 NaN（连续 seek 触发
+  //   <audio> 重载、loadedmetadata 重发 NaN），`NaN > 0` 恒为 false → pct 恒 0
+  //   → 滑块 left:0% 被推到最左（视觉上「滑块没了」）、时间显示 0:00。
+  //   store 侧已在 setDuration/setProgress 过滤 NaN（治本），这里再守一道（兜底）。
+  const durationOk = Number.isFinite(state.duration) && state.duration > 0;
+  const progressOk = Number.isFinite(state.progress) && state.progress >= 0;
+  const pct = durationOk && progressOk ? Math.min(100, (state.progress / state.duration) * 100) : 0;
 
   // 进度条：点击 / 拖动 seek
   const barRef = useRef<HTMLDivElement>(null);
   const ldBarRef = useRef<HTMLDivElement>(null); // 竖屏歌词页独立进度条
-  const dragging = useRef(false);
-  const seekAt = (clientX: number, ref: React.RefObject<HTMLDivElement> = barRef) => {
+  // v2.4.10 #10：横屏进度条独立 ref（此前横屏那条压根没有 ref，所以点不动）
+  const landBarRef = useRef<HTMLDivElement>(null);
+  //
+  // v2.4.10 #5：两条进度条的拖动标志必须**各用各的**。
+  //   旧实现 `const dragging = useRef(false)` 被播放页 barRef 与歌词页 ldBarRef 共用。
+  //   从歌词页返回播放页时，ldBarRef 的 onPointerUp 在元素已被卸载的情况下不触发，
+  //   dragging 就永久卡在 true —— 此后播放页的 onPointerMove 只要动一下手指
+  //   就持续 seekAt，把 <audio>.currentTime 反复写。连续 seek 触发元素内部重载 →
+  //   loadedmetadata 重发 NaN → duration 变 NaN → 滑块与时间全废（即「返回后进度条变了」）。
+  const dragBar = useRef(false);
+  const dragLdBar = useRef(false);
+  const dragLandBar = useRef(false);
+
+  // v2.4.10 #5：seek 节流 —— 拖动时 pointermove 触发频率远高于 <audio> 能承受的
+  // 重定位频率，100ms 一次既跟手又不会把元素拖垮。
+  const lastSeekAt = useRef(0);
+  const seekAt = (
+    clientX: number,
+    ref: React.RefObject<HTMLDivElement> = barRef,
+    opts: { force?: boolean } = {},
+  ) => {
     const el = ref.current;
-    if (!el || !state.duration) return;
+    // 用元素自身的 rect 判断可用性，不再依赖 state.duration（NaN 时会被守卫挡掉，
+    // 但拖动中 duration 恰好瞬时为 NaN 不该让整条进度条失灵）。
+    if (!el) return;
+    const now = Date.now();
+    if (!opts.force && now - lastSeekAt.current < 100) return;
+    lastSeekAt.current = now;
+    const dur = Number.isFinite(state.duration) && state.duration > 0 ? state.duration : 0;
+    if (!dur) return;
     const r = el.getBoundingClientRect();
+    if (!r.width) return;
     const p = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
-    player.seek(p * state.duration);
+    player.seek(p * dur);
   };
+
+  // v2.4.10 #5：卸载时清空所有拖动标志。
+  // 本组件会随 tab 切换卸载（MusicApp.tsx:317 `tab === 'player' && <FullScreenPlayer/>`），
+  // 卸载瞬间 pointerup 不会到达，标志会残留到下一次挂载 —— 表现就是「返回后进度条不会走」。
+  useEffect(() => () => {
+    dragBar.current = false;
+    dragLdBar.current = false;
+    dragLandBar.current = false;
+  }, []);
 
   // 作者主页：v2.4.9 #2 数据源由「按歌手名聚合搜索」改为「歌手全曲接口 artist()」。
   //
@@ -409,11 +568,30 @@ export function FullScreenPlayer({
           }
         };
 
-        // ① 歌手全曲接口（主路径）
-        const a = await aggregateArtist(sources, artist);
-        if (!alive) return;
+        // v2.4.10 #6：改为「只增不改」的渐进合并。
+        //
+        // 旧实现是两步串行（await aggregateArtist → 必要时 await aggregateSearch），
+        // 每一步结束都 setArtistTracks(merged) **整体替换**。列表会从 82 首（队列+歌手
+        // 接口第一批）突然变成 90 首（搜索兜底又补了一批）。配合下面的 key={i} 用数组
+        // 下标，React 复用同一批 DOM 节点、且 onClick 闭包捕获的是旧数组 ——
+        // 于是「点第 2 行播第 1 行」。
+        //
+        // 现在：每拿到一批就先上屏（onPartial / 分步 push），并且**只追加新条目**，
+        // 已有条目的顺序与下标保持不变。这样即使用户在加载中途点击，索引也对得上。
         push(fromQueue);
+        if (merged.length) setArtistTracks([...merged]);
+
+        // ① 歌手全曲接口（主路径）—— 支持 onPartial 时边到边上屏
+        const a = await aggregateArtist(sources, artist, {
+          onPartial: (partial) => {
+            if (!alive) return;
+            push(partial);
+            setArtistTracks([...merged]);
+          },
+        });
+        if (!alive) return;
         push(a.items);
+        setArtistTracks([...merged]);
 
         // ② 源不支持 artist() 或一条都没取到 → 回退按歌手名聚合搜索
         if (merged.length <= fromQueue.length) {
@@ -425,9 +603,11 @@ export function FullScreenPlayer({
         if (!alive) return;
         // v2.4.9 #2.1：去掉 50 条硬上限（原先无论源给多少都 slice(0,50)，
         // 接口能返回 256 首也只显示 50）。改为展示全量，配合列表复用不预渲染全部。
-        setArtistTracks(merged);
+        setArtistTracks([...merged]);
       } catch {
-        if (alive) setArtistTracks([]);
+        // v2.4.10 #6：出错时**不清空**已上屏的内容 —— 渐进渲染下列表可能已经有
+        // 好几十条（队列里的 + 先回来的源），一次异常不该把它们全抹掉。
+        // 真正空的情况是「一条都没取到」，那时列表本来就是空的，无需额外处理。
       } finally {
         if (alive) setArtistLoading(false);
       }
@@ -449,12 +629,27 @@ export function FullScreenPlayer({
           这里上下各自处理安全区、左右到边，真正「占满屏幕」（旧实现被 .main 的内边距夹住，四周留白）。 */}
       <div
         className="pv-root"
-      onTouchStart={(e) => { swipeStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+      onTouchStart={(e) => {
+        // v2.4.10 #4：滑动区 / 控件区内的触摸不参与「上下滑切歌」判定。
+        // 旧实现无条件记录起点，于是「上滑歌词」会被 .pv-root 的 onTouchEnd 当成
+        // 切歌手势 → player.next()。单曲队列下 next() 切到自己（v2.4.10 已在 store
+        // 里堵死），但歌词滚动本身也会被这次误判打断，表现为「滑两下歌词没了」。
+        const t = e.target as HTMLElement | null;
+        if (t?.closest?.('.ld-scroll,.pv-bar,.pv-btns,.fs-pl-list,.fs-author-tracks,.fs-land-lyric,.fs-land-bar,.fs-land-ctrls')) {
+          swipeStart.current = null;
+          return;
+        }
+        swipeStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }}
       onTouchEnd={(e) => {
         if (!swipeStart.current) return;
+        const t = e.target as HTMLElement | null;
         const dy = e.changedTouches[0].clientY - swipeStart.current.y;
         const dx = e.changedTouches[0].clientX - swipeStart.current.x;
         swipeStart.current = null;
+        // 同一个排除名单要在结束时再判一次：起点可能在空白处，但手指抬起时
+        // 已经滑进了歌词区（target 是抬起位置下的元素）。
+        if (t?.closest?.('.ld-scroll,.pv-bar,.pv-btns,.fs-pl-list,.fs-author-tracks,.fs-land-lyric,.fs-land-bar,.fs-land-ctrls')) return;
         // 上下滑切歌（仅在纵向位移明显时）
         if (Math.abs(dy) > 50 && Math.abs(dy) > Math.abs(dx)) {
           if (dy < 0) player.next();
@@ -473,9 +668,14 @@ export function FullScreenPlayer({
         <div className="pv-top">
           <button className="pv-mi" onClick={() => setShowPlaylist(true)} title="播放列表" aria-label="播放列表">{IC.menu}</button>
           <div className="pv-now">
-            {/* v2.4.0 C3：顶栏文案按真实播放状态动态显示 */}
-            <span className="pv-ttl">{empty ? '未在播放' : '正在播放'}</span>
-            {!empty && (
+            {/* v2.4.10 #3：非空态去掉「正在播放」四个字。
+                那一行本来是设计稿里的冗余标注 —— 用户已经在播放页里，不需要再被告知
+                「正在播放」；占掉顶栏一行高度，还把歌名挤到第二行。
+                空态保留「未在播放」（这里确实是唯一能让用户知道"没歌"的地方）。
+                标题 / 副行字号同步上调，把腾出来的空间吃掉（见 styles.css）。 */}
+            {empty ? (
+              <span className="pv-ttl">未在播放</span>
+            ) : (
               <>
                 <span className="pv-now-title">{it.title || '未知歌曲'}</span>
                 <span className="pv-now-sub">
@@ -525,14 +725,17 @@ export function FullScreenPlayer({
             className="pv-bar"
             ref={barRef}
             onPointerDown={(e) => {
-              if (empty || !state.duration) return;
-              dragging.current = true;
-              seekAt(e.clientX);
+              if (empty || !durationOk) return;
+              dragBar.current = true;
+              seekAt(e.clientX, barRef, { force: true });
               try { (e.target as any).setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
             }}
-            onPointerMove={(e) => { if (dragging.current) seekAt(e.clientX); }}
-            onPointerUp={() => { dragging.current = false; }}
-            onPointerCancel={() => { dragging.current = false; }}
+            onPointerMove={(e) => { if (dragBar.current) seekAt(e.clientX, barRef); }}
+            onPointerUp={() => { dragBar.current = false; }}
+            onPointerCancel={() => { dragBar.current = false; }}
+            /* v2.4.10 #5：补 onPointerLeave —— 指针移出元素后 pointerup 可能在别处触发，
+               漏了这条就会出现「拖着拖着松手了但标志没清」的卡死。 */
+            onPointerLeave={() => { dragBar.current = false; }}
           >
             <i className={empty ? 'zero' : ''} style={{ width: `${pct}%` }} />
             <span className={'pv-thumb' + (empty ? ' zero' : '')} style={{ left: `${pct}%` }} />
@@ -593,7 +796,7 @@ export function FullScreenPlayer({
               竖屏歌词页与横屏 3 行歌词区共用同一套逻辑 —— 当前行变化时把它滚到
               容器中间。只在用户没有手动拖动滚动条时跟随（1.5s 内手动滑过就先不抢），
               否则会出现「你刚滑到上面看两句，它又给你拽回去」。 */}
-          <div className="ld-scroll" ref={ldScrollRef} onScroll={onLyricScroll}>
+          <div className="ld-scroll" ref={ldScrollRef} onTouchStart={onLyricTouch} onWheel={onLyricWheel}>
             {lyricLines.length ? (
               lyricLines.map((l, i) => (
                 <p key={i} className={'ld-line' + (i === aLine ? ' active' : '') + (i < aLine ? ' past' : '')}>{l.text || '·'}</p>
@@ -605,10 +808,11 @@ export function FullScreenPlayer({
 
           <div className="pv-ctrls">
             <div className="pv-bar" ref={ldBarRef}
-              onPointerDown={(e) => { if (empty || !state.duration) return; dragging.current = true; seekAt(e.clientX, ldBarRef); try { (e.target as any).setPointerCapture?.(e.pointerId); } catch { /* ignore */ } }}
-              onPointerMove={(e) => { if (dragging.current) seekAt(e.clientX, ldBarRef); }}
-              onPointerUp={() => { dragging.current = false; }}
-              onPointerCancel={() => { dragging.current = false; }}
+              onPointerDown={(e) => { if (empty || !durationOk) return; dragLdBar.current = true; seekAt(e.clientX, ldBarRef, { force: true }); try { (e.target as any).setPointerCapture?.(e.pointerId); } catch { /* ignore */ } }}
+              onPointerMove={(e) => { if (dragLdBar.current) seekAt(e.clientX, ldBarRef); }}
+              onPointerUp={() => { dragLdBar.current = false; }}
+              onPointerCancel={() => { dragLdBar.current = false; }}
+              onPointerLeave={() => { dragLdBar.current = false; }}
             >
               <i className={empty ? 'zero' : ''} style={{ width: `${pct}%` }} />
               <span className={'pv-thumb' + (empty ? ' zero' : '')} style={{ left: `${pct}%` }} />
@@ -731,8 +935,12 @@ export function FullScreenPlayer({
             <div className="fs-author-bio">原创音乐人 · 在律云与你相遇</div>
           </div>
           <div className="fs-author-stats">
-            {/* v2.4.5 #5：去掉写死的 `|| 12`（空也显示 12，是假数字），改真实数量 */}
-            <div><div className="n">{artistLoading ? '…' : artistTracks.length}</div><div className="t">作品</div></div>
+            {/* v2.4.5 #5：去掉写死的 `|| 12`（空也显示 12，是假数字），改真实数量
+                v2.4.10 #6：加载中固定显示「—」而不是「…」。
+                旧实现是 artistLoading ? '…' : length —— 列表渐进追加期间计数会
+                82 → 90 地跳，数字跳动本身就在提示「列表在变」，容易误导用户以为点错了。
+                加载完成后才显示真实条数。 */}
+            <div><div className="n">{artistLoading ? '—' : artistTracks.length}</div><div className="t">作品</div></div>
             <div><div className="n">—</div><div className="t">粉丝</div></div>
             <div><div className="n">—</div><div className="t">关注</div></div>
           </div>
@@ -744,8 +952,22 @@ export function FullScreenPlayer({
           <div className="fs-author-tracks">
             {artistLoading && <div className="muted sm" style={{ padding: 16, textAlign: 'center' }}>正在获取「{it.artist}」的作品…</div>}
             {!artistLoading && artistTracks.slice(0, authorShown).map((q, i) => (
-              // v2.4.5 #5：点哪首播哪首（旧实现无论点哪首都播 state.index 那首）
-              <div key={i} className="fs-author-track" onClick={() => { setShowAuthor(false); player.playQueue(artistTracks, i); }}>
+              // v2.4.10 #6：key 用「源 + 曲目 id」而不是数组下标。
+              //
+              //   key={i} 时，列表内容一变（82 → 90 首的渐进追加虽然现在只增不改，
+              //   但换歌手时整列表会被替换），React 会认为「第 i 个节点还是原来那个」
+              //   从而复用 DOM 与事件处理器 —— 而处理器闭包捕获的是**渲染当时的数组**，
+              //   于是点第 2 行触发的是旧数组的第 1 项。
+              //
+              //   用身份作 key 后，React 按条目身份比对，复用不会错位。
+              <div key={q.sourceId + ':' + q.id} className="fs-author-track" onClick={() => {
+                // v2.4.10 #6（兜底）：点击时按**身份**重新定位下标，而不是直接用渲染时的 i。
+                // 双保险 —— 即便将来有某条路径又改成整体替换列表，这里也不会播错。
+                const idx = artistTracks.findIndex((x) => x.sourceId === q.sourceId && x.id === q.id);
+                setShowAuthor(false);
+                // v2.4.10 #16：playQueue 内部已先停旧音频
+                player.playQueue(artistTracks, idx < 0 ? i : idx);
+              }}>
                 <span className="at-idx">{i + 1}</span>
                 <span className="at-cover" style={{ background: gradientFor(q.title) }} />
                 <span className="at-meta"><span className="at-name">{q.title}</span><span className="at-sub">{[q.artist, q.sourceName].filter(Boolean).join(' · ')}</span></span>
@@ -785,10 +1007,26 @@ export function FullScreenPlayer({
               <div className="fs-land-title">{it.title || '未在播放'}</div>
               <div className="fs-land-sub">{[it.artist, it.album ? `《${it.album}》` : ''].filter(Boolean).join(' · ') || '未知艺术家'}</div>
             </div>
-            <div className="fs-land-lyric" ref={landLyricRef} onScroll={onLandLyricScroll}>
+            <div className="fs-land-lyric" ref={landLyricRef} onTouchStart={onLyricTouch} onWheel={onLyricWheel}>
               {lyricLines.length ? (
-                lyricLines.map((l, i) => (
-                  <p key={i} className={'ld-line' + (i === aLine ? ' active' : '') + (i < aLine ? ' past' : '')}>{l.text || '·'}</p>
+                // v2.4.10 #8：只渲染「当前行 ±1」的三行，其余加 .ld-dim（CSS display:none）。
+                //   · 目标行不在布局里 → 无论容器高度怎么算都不会露出第四行；
+                //   · 同时这也让「自动跟随」的 delta 计算稳定 —— 布局里最多 3 行，
+                //     不存在「元素在视口外导致 rect 异常」的情况。
+                //   边界：aLine < 0（还没到第一句）时退化为中心三行，保证画面不空。
+                (aLine >= 0
+                  ? lyricLines
+                      .map((l, i) => ({ l, i }))
+                      .filter(({ i }) => Math.abs(i - aLine) <= 1)
+                  : lyricLines.slice(0, 3).map((l, i) => ({ l, i }))
+                ).map(({ l, i }) => (
+                  <p
+                    // key 用**原数组下标** i（不是过滤后的序号）：i 是歌词行的稳定身份，
+                    // aLine 前进时同一行会一直带着同一个 i，React 能正重复用节点、
+                    // 触发的是「文字替换」而不是「重建」，切行过渡才平滑。
+                    key={i}
+                    className={'ld-line' + (i === aLine ? ' active' : '') + (i < aLine ? ' past' : '') + (aLine >= 0 && Math.abs(i - aLine) > 1 ? ' ld-dim' : '')}
+                  >{l.text || '·'}</p>
                 ))
               ) : (
                 <p className="ld-empty">暂无歌词 / 该音源未提供歌词</p>
@@ -802,9 +1040,41 @@ export function FullScreenPlayer({
               </button>
               <button className="fs-land-ctrl" onClick={() => player.next()} title="下一曲" aria-label="下一曲">{IC.next}</button>
             </div>
-            <div className="fs-land-bar" onClick={(e) => e.stopPropagation()}>
-              <div className="fs-land-fill" style={{ width: `${pct}%` }} />
-              <div className="fs-land-times"><span>{fmtTime(state.progress)}</span><span>{fmtTime(state.duration)}</span></div>
+            {/* v2.4.10 #10/#11：横屏进度条重做。
+                -------------------------------------------------------------------
+                #10「滑不动」：旧实现只有 `onClick={(e)=>e.stopPropagation()}` ——
+                那只是为了阻止点击冒泡到 .fs-land 的 onClick（切换控制区显隐），
+                不是进度条交互。它没有任何 pointer handler，也没有 ref，
+                压根不是一条可交互的进度条。现在补齐竖屏同款的四件套 + ref。
+
+                #11「左右没有时间」：.fs-land-times 原本是 .fs-land-bar 的**子元素**，
+                而 .fs-land-bar 是 height:4px + overflow:hidden —— 时间行被完全裁掉。
+                现在把时间行移到进度条外面（同级），并各自给固定宽度：
+                时间行不再参与进度条的裁剪，进度条也不被时间行撑高。 */}
+            <div className="fs-land-progress" onClick={(e) => e.stopPropagation()}>
+              <div
+                className="fs-land-bar"
+                ref={landBarRef}
+                onPointerDown={(e) => {
+                  if (empty || !durationOk) return;
+                  dragLandBar.current = true;
+                  seekAt(e.clientX, landBarRef, { force: true });
+                  try { (e.target as any).setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
+                }}
+                onPointerMove={(e) => { if (dragLandBar.current) seekAt(e.clientX, landBarRef); }}
+                onPointerUp={() => { dragLandBar.current = false; }}
+                onPointerCancel={() => { dragLandBar.current = false; }}
+                onPointerLeave={() => { dragLandBar.current = false; }}
+              >
+                <div className="fs-land-fill" style={{ width: `${pct}%` }} />
+                {/* v2.4.10 #10：补滑块 —— 竖屏有 .pv-thumb，横屏旧实现只有一条 fill， 
+                    看不出可拖动，也没有「抓手」的视觉反馈。 */}
+                <span className={'fs-land-thumb' + (empty ? ' zero' : '')} style={{ left: `${pct}%` }} />
+              </div>
+              <div className="fs-land-times">
+                <span>{fmtTime(state.progress)}</span>
+                <span>{empty ? '-0:00' : fmtTime(state.duration)}</span>
+              </div>
             </div>
           </div>
           {/* 隐藏态独立层：当前行歌词居中放大（避免流式布局位置跑偏，见 11.4①） */}
@@ -815,6 +1085,12 @@ export function FullScreenPlayer({
       )}
 
     </div>
+
+      {/* v2.4.10 #13：旋转窗口期的输入锁。
+          旋转校验最长 6s，这期间底部 Tab 仍在（.landscape-on 还没挂）、播放页已渲染，
+          用户点一下 Tab 就会让 FullScreenPlayer 整棵卸载 → 退回竖屏 → 掉回主页。
+          这层透明遮罩把这段窗口期的点击全部吃掉，旋转完成（或超时）即撤。 */}
+      {oriLocked && <div className="ori-lock" aria-hidden="true" />}
 
       {/* v2.4.1 #D：3 点菜单挂在 .pv-root 之外（Fragment 同级）。
           这样它的层叠上下文不再受 .pv-root(z-index:60) 约束，

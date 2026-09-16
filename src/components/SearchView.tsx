@@ -43,6 +43,10 @@ export function SearchView({
   const [errors, setErrors] = useState<{ sourceId: string; message: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  // v2.4.10 #2：渐进渲染进度 —— 「已收到 N/M 个源」。
+  // 子站级增量上来时用户会看到结果在「慢慢变多」，一个细字提示能解释这种变化，
+  // 否则容易被当成「结果一直在跳」。
+  const [srcProgress, setSrcProgress] = useState<{ got: number; total: number } | null>(null);
   // v2.4.9 #1.5.3：搜索请求令牌 —— onPartial 是异步回调，用户可能已经改了关键词
   // 或重搜，用令牌确保「上一次搜索的迟到增量」不会覆盖当前结果。
   const runToken = useRef(0);
@@ -67,6 +71,7 @@ export function SearchView({
     setSearched(true);
     setItems([]);
     setErrors([]);
+    setSrcProgress(null);
     library.addSearch(query);
     // v2.4.9 #1.5.3：onPartial —— 谁快谁先上屏，不等最慢的源。
     // v2.4.9 #1.5.5：走 aggregateSearchCached，同关键词同源 10 分钟内秒回。
@@ -81,12 +86,18 @@ export function SearchView({
         // 之后播放时会比对指纹 —— 若期间换过源，则旧直链不再可信，强制用新源重新解析。
         setItems(partial.map((it) => markSourceRev(it, sources)));
         setLoading(false); // 已经有内容上屏，撤掉转圈，后续增量静默追加
+        // v2.4.10 #2：统计「已经出结果的子站数 / 全部子站数」。
+        // sourceName 在聚合源下就是子站名，按它去重即可得到已返回的子站集合。
+        const enabledTotal = sources.filter((s) => s.enabled).length;
+        const got = new Set(partial.map((it) => it.sourceName).filter(Boolean)).size;
+        setSrcProgress(got > 0 && got < enabledTotal ? { got, total: enabledTotal } : null);
       },
     });
     if (token !== runToken.current) return;
     setItems(r.items.map((it) => markSourceRev(it, sources)));
     setErrors(r.errors);
     setLoading(false);
+    setSrcProgress(null); // 全部到齐，撤掉进度提示
   };
 
   const groups = items.reduce<Record<string, MediaItem[]>>((acc, it) => {
@@ -108,9 +119,16 @@ export function SearchView({
 
   // v2.3.11 #4：注册到返回栈。输入框里有内容时先清空（用户的心理预期是「退一步」），
   // 已经是空输入才真正关闭搜索页，避免一次返回把整个页面带走。
+  //
+  // v2.4.10 #7：加 active 守卫。
+  //   本组件在播放页打开时并没有卸载（宿主只把它 display:none 藏起来），
+  //   于是这条 handler 会一直留在返回栈上。虽然 MusicApp.handleBack 现在已把
+  //   播放页分支提到最前（治本），这里再加一道保险：不可见时绝不出手，
+  //   免得将来又有别的路径先问到栈上，返回被这个看不见的页面悄悄吃掉。
   useEffect(() => {
     if (!onClose) return;
     return pushBackHandler(() => {
+      if (!active) return false; // 不可见 → 放行给外层（播放页/其他浮层）
       if (kw.trim() !== '') {
         setKw('');
         setSearched(false);
@@ -121,7 +139,7 @@ export function SearchView({
       onClose();
       return true;
     });
-  }, [onClose, kw]);
+  }, [onClose, kw, active]);
 
   return (
     <div
@@ -197,6 +215,12 @@ export function SearchView({
       )}
 
       {loading && <div className="loading">跨源搜索中…</div>}
+
+      {/* v2.4.10 #2：子站级渐进渲染的进度提示 —— 结果会随各子站陆续返回而变多，
+          用一行细字把这个过程讲清楚，避免用户以为列表在乱跳。 */}
+      {!loading && srcProgress && (
+        <div className="src-progress">已收到 {srcProgress.got}/{srcProgress.total} 个源，正在补齐…</div>
+      )}
 
       {/* v2.4.6 #2：结果分组标题（设计稿 .grp-head）。
           单源结果时显示「来自：xxx（N）」+ 整组加入，多源则由下方 tab 承担筛选。 */}

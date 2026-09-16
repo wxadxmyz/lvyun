@@ -129,6 +129,44 @@ function pickPrev(): number {
   return i;
 }
 
+/* ==========================================================================
+   v2.4.10 #16：切歌前先停旧音频。
+   --------------------------------------------------------------------------
+   现象：正在播放 → 暂停 → 搜索另一首 → 点播放，**旧歌会先响 1~2 秒**才切过去。
+
+   根因是两处 effect 抢跑，谁都没先停：
+     · AudioHost 的「播放/暂停」effect 只依赖 isPlaying，切歌时 isPlaying 由
+       false→true，这个 effect 同步就跑，直接 a.play() —— 而此刻 <audio>.src
+       还是**旧歌**，浏览器接着上次的 currentTime 往下放 → 旧歌出声。
+     · 同一时刻「切歌」effect 也在跑，但它第一件事是 await resolvePlay()，
+       新歌没有缓存直链时要发网络请求（getPlayUrl），往返就是你听到的 1~2 秒。
+
+   这里在 store 侧把「切歌 = 先停旧的」写进语义：所有主动切歌入口先同步 pause()，
+   物理上掐断旧声；AudioHost 侧再用 loadedKeyRef 兜底校验（见 AudioHost.tsx）。
+
+   ⚠️ 刻意不放在 toggle() / pause() 里 —— 那两条路径本身就是「停」，会自己停死。
+   ========================================================================== */
+function stopAudio() {
+  if (audioElRef && !audioElRef.paused) audioElRef.pause();
+}
+
+/**
+ * v2.4.10 #4：把当前音频从头重播（单曲循环 / 单曲队列播完时用）。
+ *
+ * 与 stopAudio() 的区别：这不是「切歌」，src 不变，所以不能走 AudioHost 的换源流程
+ * —— 那条路会因为「URL 没变」而跳过 reload。这里直接操作元素：
+ * currentTime 归零 → play()。
+ */
+function restartElement() {
+  if (!audioElRef) return;
+  try {
+    audioElRef.currentTime = 0;
+    audioElRef.play().catch(() => { /* 自动播放被拦：由 isPlaying 状态与用户手势兜底 */ });
+  } catch {
+    /* 元素尚未 ready 等异常：静默，AudioHost 的 isPlaying effect 会再试一次 */
+  }
+}
+
 export const player = {
   subscribe(l: () => void) {
     listeners.add(l);
@@ -151,6 +189,7 @@ export const player = {
    * 这样「搜歌 → 播放 → 返回搜索 → 再点」就能看到前面播过的歌仍在队列中。
    */
   playItem(item: MediaItem) {
+    stopAudio(); // v2.4.10 #16：先停旧音频，否则旧歌会先响 1~2 秒
     const key = (x: MediaItem) => `${x.sourceId}:${x.id}`;
     const k = key(item);
     const exist = state.queue.findIndex((q) => key(q) === k);
@@ -164,7 +203,8 @@ export const player = {
   },
 
   playQueue(items: MediaItem[], startIndex = 0) {
-    if (items.length === 0) return;
+    if (items.length === 0) return; // 空列表不该打断正在播的歌
+    stopAudio(); // v2.4.10 #16：先停旧音频（必须放在上面的 return 之后）
     const idx = Math.max(0, Math.min(startIndex, items.length - 1));
     setState({ queue: items, index: idx, current: items[idx], isPlaying: true, progress: 0, duration: 0 });
   },
@@ -186,8 +226,16 @@ export const player = {
   },
 
   next() {
+    // v2.4.10 #4：单曲队列（或只有一个可播项）时不切歌。
+    //
+    // 旧实现在 queue.length === 1 时 pickNext() 会算回 index 0 —— 也就是「切到自己」。
+    // 于是 setState 把 progress/duration 清 0、isPlaying 置 true，AudioHost 那边
+    // URL 没变所以不 reload，声音继续播；用户看到的是「上滑一下，歌没变但进度跳了、
+    // 歌词空了」。播放页的上滑手势很容易在滚动歌词时被误判成切歌，这条路径必须堵死。
+    if (state.queue.length <= 1) return;
     const i = pickNext();
     if (i < 0) return;
+    stopAudio(); // v2.4.10 #16：切歌前先停旧音频
     setState({ index: i, current: state.queue[i], isPlaying: true, progress: 0, duration: 0 });
   },
 
@@ -196,13 +244,16 @@ export const player = {
       setState({ progress: 0 });
       return;
     }
+    if (state.queue.length <= 1) return; // v2.4.10 #4：同上，单曲队列不切
     const i = pickPrev();
     if (i < 0) return;
+    stopAudio(); // v2.4.10 #16：切歌前先停旧音频
     setState({ index: i, current: state.queue[i], isPlaying: true, progress: 0, duration: 0 });
   },
 
   playAt(index: number) {
     if (index < 0 || index >= state.queue.length) return;
+    stopAudio(); // v2.4.10 #16：切歌前先停旧音频
     setState({ index, current: state.queue[index], isPlaying: true, progress: 0, duration: 0 });
   },
 
@@ -264,10 +315,23 @@ export const player = {
     if (audioElRef) audioElRef.currentTime = t;
     if (videoElRef) videoElRef.currentTime = t;
   },
+  /**
+   * v2.4.10 #5：过滤掉 NaN / Infinity / 负数时长。
+   *
+   * 旧实现 `if (d !== state.duration) setState({ duration: d })` 原样接收。
+   * 而连续 seek 会让 <audio> 内部重载、重新触发 loadedmetadata —— 此刻 duration
+   * 可能是 NaN。NaN 一旦写进 state 就再也出不来（NaN !== NaN 恒为 true，
+   * 于是后面每次 setDuration(NaN) 都会再触发一次 setState，连带刷屏）：
+   *   FullScreenPlayer 的 `pct = duration > 0 ? ... : 0` → NaN > 0 为 false → pct = 0
+   *   → 滑块被推到最左（视觉上「滑块消失了」），时间显示 0:00。
+   * 这里只接受有限正数，NaN 直接丢弃，state.duration 保持上一次的有效值。
+   */
   setDuration(d: number) {
+    if (!Number.isFinite(d) || d <= 0) return;
     if (d !== state.duration) setState({ duration: d }, true);
   },
   setProgress(p: number) {
+    if (!Number.isFinite(p) || p < 0) return; // v2.4.10 #5：同上，NaN 进度一律丢弃
     if (Math.abs(p - state.progress) > 0.25) setState({ progress: p }, true);
   },
   setVolume(v: number) {
@@ -281,8 +345,22 @@ export const player = {
   },
 
   onEnded() {
+    // v2.4.10 #4：单曲队列的循环兜底。
+    //
+    // next() 现在遇到 length <= 1 会直接 return（那是为了堵死"上滑误切歌"），
+    // 但「一首歌播完了」是**合法**的循环场景，必须继续播 ——
+    // 否则单曲队列播完一次就彻底静音。
+    //
+    // ⚠️ 不能只 setState —— <audio> 的 src 没变，AudioHost 那个「URL 没变不 reload」
+    //    的优化会让它保持"已播完"状态，isPlaying 置 true 也放不出声。
+    //    所以这里必须直接操作元素：先把 currentTime 归零，再 play()。
     if (state.mode === 'one' && state.current) {
+      restartElement();
       setState({ progress: 0, isPlaying: true });
+    } else if (state.queue.length <= 1) {
+      if (!state.current) return;
+      restartElement();
+      setState({ index: 0, current: state.queue[0] ?? state.current, isPlaying: true, progress: 0 });
     } else {
       player.next();
     }

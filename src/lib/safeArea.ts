@@ -22,7 +22,34 @@ export function installSafeAreaFallback() {
   const root = document.documentElement;
 
   const apply = () => {
-    // 仅在 env() 返回 0（或不可用）时兜底，避免覆盖真机真实 inset
+    /* v2.4.10 #14：横屏时不注入安全区。
+     *
+     * 实测（截图像素级采样，dpr 3.5）：横屏顶部凭空多出 148 device px = 42.3 css px
+     * 的空白带，颜色精确等于 App 的 --bg（#f4f5f9），不是系统状态栏的白 ——
+     * 也就是律云自己画出来的。构成是 `padding-top 8px + --sat 34px`。
+     *
+     * 那 34px 就来自下面的 SAT_FALLBACK：横屏时 Android 的
+     * env(safe-area-inset-top) 返回 0（横屏本来就没有状态栏，
+     * 或 WebView 在沉浸式下不上报），于是 `readPx('--sat') <= 0` 成立 → 注入 34px。
+     *
+     * 底部同理：横屏的手势条是贴在**侧边**的，底部留白（8px padding + ~7px --sab）
+     * 什么也挡不住，纯属浪费。
+     *
+     * 所以横屏直接把两个变量归零。
+     *
+     * ⚠️ 为什么归零是安全的：--sat/--sab 是 :root 上的全局变量，横屏时整个屏幕
+     *    由 .pv-root（position:fixed; inset:0; z-index:60）接管，
+     *    .main 已 display:none（styles.css `body.landscape-on .main.player-open`），
+     *    底部 Tab 也 display:none —— 没有任何其他元素依赖这两个变量。
+     *    退出横屏时 resize 事件会重跑本函数，竖屏值自动恢复（见文件末的监听）。 */
+    const landscape = window.innerWidth > window.innerHeight;
+    if (landscape) {
+      root.style.setProperty('--sat', '0px');
+      root.style.setProperty('--sab', '0px');
+      return;
+    }
+
+    // 竖屏：仅在 env() 返回 0（或不可用）时兜底，避免覆盖真机真实 inset
     if (readPx('--sat') <= 0) {
       root.style.setProperty('--sat', `${SAT_FALLBACK}px`);
     }

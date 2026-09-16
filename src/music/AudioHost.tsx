@@ -55,6 +55,16 @@ export function AudioHost({
 
   /** 当前 <audio> 已装载的直链（用 dataset 而非 el.src，规避浏览器对 src 的绝对化改写） */
   const loadedUrlRef = useRef<string>('');
+  /**
+   * v2.4.10 #16：当前 el.src 对应的是**哪首歌**（`sourceId:id`）。
+   *
+   * 用于堵死「暂停后点新歌，旧歌先响 1~2 秒」：
+   * 下面的「播放/暂停」effect 只依赖 isPlaying，切歌时 isPlaying 由 false→true
+   * 会让它**同步**就跑，直接 a.play() —— 而此刻 el.src 还是旧歌（新歌的直链
+   * 还在 await resolvePlay 的网络请求里没回来），于是旧歌出声。
+   * 有了这个 ref，play() 之前先校验「源归属」，不匹配就不放。
+   */
+  const loadedKeyRef = useRef<string>('');
 
   // ── 注册到全局播放器 ────────────────────────────────────────────────
   // 卸载必须传 null，否则 player 会持有已销毁的元素引用，seek/倍速全部失效。
@@ -88,6 +98,7 @@ export function AudioHost({
         // 只有 URL 真的变了才 reload —— 否则「暂停后点同一首」会白白重新缓冲。
         if (loadedUrlRef.current !== url) {
           loadedUrlRef.current = url;
+          loadedKeyRef.current = key; // v2.4.10 #16：先标记源归属，再换 src
           el.src = url;
           el.load();
           // 续听：仅在切到新曲目时定位（放在首自动恢复会造成进度倒跳）
@@ -98,6 +109,10 @@ export function AudioHost({
             }
           };
           el.addEventListener('loadedmetadata', onMeta);
+        } else {
+          // v2.4.10 #16：URL 相同（同源重播 / 切回已缓存的歌）时 key 也要跟上，
+          // 否则 loadedKeyRef 停留在上一首，下面的闸门会误判「源没就绪」而不放行。
+          loadedKeyRef.current = key;
         }
 
         if (state.isPlaying) el.play().catch(() => {});
@@ -115,13 +130,31 @@ export function AudioHost({
   }, [state.current?.id, state.current?.sourceId]);
 
   // ── 播放 / 暂停 ────────────────────────────────────────────────────
+  //
+  // v2.4.10 #16：加「源已就绪」闸门 + 扩依赖数组。
+  //
+  //   ① 闸门：isPlaying 刚翻成 true 时，el.src 可能还是上一首（新歌直链还在
+  //      网络请求中）。此时 play() 就是把旧歌放出来 —— 正是那 1~2 秒。
+  //      校验 loadedKeyRef 与当前曲目身份一致才放行。
+  //   ② 依赖数组必须从 [state.isPlaying] 扩成三元素：源换好（loadedKeyRef 更新、
+  //      el.src 已换）之后，这个 effect 必须**再跑一次**才能把新歌播起来；
+  //      仍只监听 isPlaying 的话 isPlaying 没变 → effect 不触发 → 新歌不响，
+  //      表现为「要点两次播放」。
+  //   ③ store 侧已在 playItem/playQueue/playAt/next/prev 里同步 pause 旧音频
+  //      （治本，旧声立刻断）；这里是兜底，覆盖 store 没走到的路径与异步竞态。
   useEffect(() => {
     const a = audioRef.current;
-    if (!a || !state.current) return;
-    if (state.isPlaying) a.play().catch(() => {});
-    else a.pause();
+    const it = state.current;
+    if (!a || !it) return;
+    const key = `${it.sourceId}:${it.id}`;
+    if (state.isPlaying) {
+      if (loadedKeyRef.current !== key) return; // 源还没换过来，别急着 play 旧歌
+      a.play().catch(() => {});
+    } else {
+      a.pause();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.isPlaying]);
+  }, [state.isPlaying, state.current?.id, state.current?.sourceId]);
 
   // ── v2.4.8 #1：切歌时异步拉歌词 ──────────────────────────────────────
   // 与取直链分开：歌词是增强项，晚到/失败都不该阻断播放。

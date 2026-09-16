@@ -78,7 +78,21 @@ export interface PlayUrl {
 }
 
 export interface MediaSource {
-  search(keyword: string, page?: number): Promise<MediaItem[]>;
+  /**
+   * v2.4.10 #2：第三参数 onPartial 为「子站级渐进渲染」通道（可选）。
+   *
+   * 只有聚合源（bundle）会用到：它内部并发 N 个子站，每个子站一回来就把
+   * 「当前已收到的全部结果」推一次，让上层先渲染先到的子站，而不是干等最慢的。
+   * 单源适配器忽略此参数即可（多数源本来就是一次请求出全部结果，渐进无意义）。
+   *
+   * 回调里给出的 items 是**累积快照**（不是增量 diff）—— 调用方直接整体替换即可，
+   * 不需要自己做合并。
+   */
+  search(
+    keyword: string,
+    page?: number,
+    onPartial?: (items: MediaItem[]) => void,
+  ): Promise<MediaItem[]>;
   getPlayUrl(itemId: string): Promise<PlayUrl>;
   /**
    * v2.4.9 #2.2：歌手全曲（作者页数据源）。可选实现。

@@ -21,15 +21,102 @@ const TIMEOUT_BY_TYPE: Record<string, number> = {
   mock: 5000,
 };
 
-// v2.4.9 #1.5.4：去重独立成函数（慕海 v3.5.0 同名实现）。
-// 保持「先到先得」的原顺序，只丢同名同艺术家的后到者，避免列表顺序被响应速度打乱。
+// v2.4.10 #1：去重键加入「来源标识」—— 「同名同歌手的跨源结果」不再被丢掉。
+//
+// 旧实现键是 `title|artist`（不含来源），配合「先到先得」+ 末尾 slice(0,90)：
+// 4 个子站一起搜时，**最快的那个源会独占全部名额**（实测酷狗 89 条、酷我 1 条、
+// 网易云 0、咪咕 0）—— 因为酷狗先回来把 90 个坑占满，其余源的同名歌全部被判重。
+//
+// 现在按「歌 + 来源」去重：同一个来源内部的重复仍然去掉（真正的重复），
+// 但 A 源的《青花瓷》与 B 源的《青花瓷》各自保留 —— 用户可在「来源 tab」里
+// 看到每个子站各自的结果，也才有了换源重试的余地。
+//
+// ⚠️ 这里必须用 sourceToken() 而不是裸 it.sourceId。
+//   聚合订阅源（bundle）会把 N 个子站的结果**全部标成同一个 sourceId**（即 bundle
+//    自己的 id，播放路由需要它），四个子站的唯一区分是 sourceName（子站名）。
+//    若用 sourceId 作键，四个子站又会被折叠成一个 —— 等于没修。
+//    sourceToken() 的取值顺序：sourceName（子站级）→ sourceId（单源级）→ raw 兜底。
+function sourceToken(it: MediaItem): string {
+  const anyIt = it as any;
+  // 子站名优先：聚合源下它就是「哪一路子站」的身份
+  const sub = anyIt.sourceName || anyIt.raw?.__subName;
+  if (sub) return String(sub);
+  return String(it.sourceId ?? '');
+}
+
+/** 条目的唯一身份（去重 / 渐进累积都用它） */
+function itemKey(it: MediaItem): string {
+  return `${it.title}|${it.artist ?? ''}|${sourceToken(it)}`;
+}
+
 function dedupe(items: MediaItem[]): MediaItem[] {
   const map = new Map<string, MediaItem>();
   for (const it of items) {
-    const key = `${it.title}|${it.artist ?? ''}`;
+    const key = itemKey(it);
     if (!map.has(key)) map.set(key, it);
   }
   return Array.from(map.values());
+}
+
+// v2.4.10 #1：按源「轮转」分配名额。
+//
+// 与上面的去重键配套 —— 光改键还不够。旧实现末尾那次 slice(0, 90) 是按「桶的先后
+// 顺序」截断：热门关键词下第一个源动辄返回 90 条，混排后稳定占据列表前 90 位，
+// 后面的源一条都露不出来（实测酷狗 89、酷我 1、网易云 0、咪咕 0）。
+//
+// ⚠️ 试过但**是错的**做法：每源先截 40 条再拼起来。
+//    4 个源 × 40 = 160 个候选，而总上限只有 90 —— 前两个源就把名额吃满，
+//    后两个源照样是 0（离线实测：kugou 40 / kuwo 40 / netease 10 / migu 0）。
+//    配额必须**按最终名额分配**，不能先放宽再截断。
+//
+// 正确做法：轮转（round-robin）取。第 1 轮每源各取 1 条，第 2 轮再各取 1 条……
+// 直到凑满 90 或所有源都取空。这样：
+//   · 只要某个源有结果，它就一定能上屏（不会因为排在后面被饿死）；
+//   · 队首依然是「优先级最高的源」的第一条（轮转从下标 0 开始）；
+//   · 某源结果少时名额自动让给其它源（它取空后轮转自动跳过），不浪费总量。
+//
+// 90 / 4 ≈ 22，即每个源大约能拿到 22 条起，结果多的源在其它源取空后继续补。
+const MAX_RESULTS = 90;
+
+/**
+ * 按**来源标识**（子站名 / 源 id）把结果轮转交错合并，最多取 limit 条。
+ *
+ * 关键：分桶不能按「源配置」分，必须按 sourceToken 分。
+ * 因为聚合订阅源（bundle）把 4 个子站的结果打包成**一个源**返回，
+ * 若按源配置分桶，这一个桶里依然是最快的子站占满前 90 位 —— 等于白改。
+ * 按 token 分桶后，酷狗 / 酷我 / 网易云 / 咪咕 各是一个桶，轮转才真正生效。
+ *
+ * 取法：第 1 轮每桶各取 1 条，第 2 轮再各取 1 条……直到凑满 limit 或全部取空。
+ * 这样只要某个来源有结果，它就一定能上屏；某个来源结果少时名额自动让给其它来源。
+ */
+function interleave(buckets: MediaItem[][], limit = MAX_RESULTS): MediaItem[] {
+  // 先按 token 重新分桶，保持「首次出现顺序」= 源优先级顺序（buckets 已按 priority 排序）
+  const order: string[] = [];
+  const byToken = new Map<string, MediaItem[]>();
+  for (const b of buckets) {
+    for (const it of b) {
+      const t = sourceToken(it);
+      let arr = byToken.get(t);
+      if (!arr) { arr = []; byToken.set(t, arr); order.push(t); }
+      arr.push(it);
+    }
+  }
+
+  const out: MediaItem[] = [];
+  const cursor = order.map(() => 0);
+  let progressed = true;
+  while (out.length < limit && progressed) {
+    progressed = false;
+    for (let i = 0; i < order.length && out.length < limit; i++) {
+      const b = byToken.get(order[i])!;
+      const c = cursor[i];
+      if (c >= b.length) continue;
+      out.push(b[c]);
+      cursor[i] = c + 1;
+      progressed = true;
+    }
+  }
+  return out;
 }
 
 // 跨源搜索：并发请求所有启用源，按优先级合并。
@@ -54,11 +141,34 @@ export async function aggregateSearch(
   const buckets: MediaItem[][] = active.map(() => []);
   const errors: { sourceId: string; message: string }[] = [];
 
+  // v2.4.10 #2：渐进渲染的「只增不减」累积容器。
+  //
+  // 为什么要它：bundle 源内部每个子站回来会推一次快照，而它的快照是**累积**的，
+  // 但 aggregateSearch 这一层在源真正 resolve 时会把 buckets[i] 换成最终结果；
+  // 两次 emit 之间条数若出现回落，用户的列表就会"缩水"（已出现的条目凭空消失）。
+  // 这个 Set 记的是「已经推给 UI 的条目身份」，每次取并集，保证列表单调增长。
+  const emittedKeys = new Set<string>();
+  const emitKeep: MediaItem[] = [];
+
   const emit = () => {
     if (!opts.onPartial) return;
-    const list = buckets.flat();
+    // v2.4.10 #2：渐进渲染也走轮转合并 —— 否则「第一个源先回来」时它照样独占整个列表，
+    // 虽然不是最终结果，但会让用户先看到一大片单一来源的内容再被替换（闪屏感）。
+    const list = interleave(buckets);
     const shown = opts.mediaType ? list.filter((it) => it.mediaType === opts.mediaType) : list;
-    opts.onPartial(dedupe(shown));
+
+    // v2.4.10 #2：**只增不减**。
+    // bundle 源的子站快照是累积推的，但 aggregateSearch 在源真正 resolve 时会用
+    // 最终结果覆盖 buckets[i] —— 两次 emit 之间条数若回落，用户的列表就会"缩水"
+    //（已出现的条目凭空消失）。这里用 emittedKeys 记「已推给 UI 的身份」，只追加，
+    // 保证列表单调增长。
+    for (const it of shown) {
+      const k = itemKey(it);
+      if (emittedKeys.has(k)) continue;
+      emittedKeys.add(k);
+      emitKeep.push(it);
+    }
+    opts.onPartial([...emitKeep]);
   };
 
   await Promise.all(
@@ -74,7 +184,19 @@ export async function aggregateSearch(
         // 因此保留分层超时（js/tvbox 25s），「源多就慢」改由 onPartial 渐进渲染 +
         // 10 分钟结果缓存解决（慢源不再阻塞首屏）。显式传 opts.timeout 时仍以调用方为准。
         const timeout = opts.timeout ?? TIMEOUT_BY_TYPE[s.type] ?? 8000;
-        const items = await withTimeout(createSource(s).search(keyword, 1), timeout);
+        // v2.4.10 #2：把 onPartial 透传给源。
+        // 目前只有聚合源（bundle）会用 —— 它内部有 N 个子站，可以「子站级」渐进上屏；
+        // 单源适配器忽略第三个参数，行为不变（它们本来就是一次请求出全部结果）。
+        // 源内部推的增量同样要先过配额 + 去重，避免绕过上面的统一口径。
+        const items = await withTimeout(
+          createSource(s).search(keyword, 1, (partialItems) => {
+            if (!opts.onPartial) return;
+            // 子站快照是「本源的累积结果」，直接覆盖本桶即可（不是增量拼接）
+            buckets[i] = partialItems;
+            emit();
+          }),
+          timeout,
+        );
         buckets[i] = items;
         emit(); // 这个源一回来就先把它的结果推上去
       } catch (e: any) {
@@ -90,13 +212,31 @@ export async function aggregateSearch(
     })
   );
 
-  let items = dedupe(buckets.flat());
+  // v2.4.10 #1：轮转合并 → 去重 → 截断。
+  //
+  // 旧实现的注释写「结果丰富度靠各源搜索返回量保证」，实际并没有保证：
+  // 去重键不含来源 + 末尾直接 slice(0,90)，等于让最快的源独占。
+  // 现在轮转交错 → 去重 → 截断，每个有结果的源都能稳定上屏。
+  let items = dedupe(interleave(buckets));
   if (opts.mediaType) items = items.filter((it) => it.mediaType === opts.mediaType);
-  // v2.4.9 #1.5：多源合并去重后只保留前 90 条（显示层截断，
-  // 结果丰富度靠各源搜索返回量保证，截断只为控制渲染与内存）。
-  // 注意：是**合并后总列表**截断 90，不是每源各 90。
-  const MAX_RESULTS = 90;
-  return { items: items.slice(0, MAX_RESULTS), errors };
+  items = items.slice(0, MAX_RESULTS);
+
+  // v2.4.10 #2：最终结果必须**包住**已经渐进推给 UI 的条目。
+  // 渐进渲染期间推过、而最终结果里没有的（源内部快照与最终值有出入时可能出现），
+  // 如果直接丢掉，用户就会看到「已经在屏幕上的歌突然消失」。
+  // 这里把已上屏的条目补回末尾，保证「最终列表 ⊇ 渐进列表」。
+  if (opts.onPartial && emitKeep.length) {
+    const finalKeys = new Set(items.map((it) => itemKey(it)));
+    for (const it of emitKeep) {
+      if (items.length >= MAX_RESULTS) break;
+      const k = itemKey(it);
+      if (finalKeys.has(k)) continue;
+      finalKeys.add(k);
+      items.push(it);
+    }
+  }
+
+  return { items, errors };
 }
 
 /**

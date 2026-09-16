@@ -60,10 +60,39 @@ function callBridge(ori: Ori): boolean {
   }
 }
 
+/**
+ * v2.4.10 #13：加 screen.orientation.type 交叉校验。
+ *
+ * 旧实现只比 innerWidth / innerHeight。问题在于 WebView 里这两个值**可能先于
+ * 系统旋转生效**（或反之，旋转完成后仍有几百毫秒是旧值）——
+ * 于是校验链会在「窗口尺寸对了、系统其实还没转」时提前判定成功，
+ * 或者在「系统已经转了、窗口尺寸还没跟上」时反复重发指令。
+ * 两者叠加起来就是用户看到的「点一下没反应，再点一下才进去」。
+ *
+ * screen.orientation.type 由系统直接给出（'landscape-primary' / 'portrait-primary' …），
+ * 与窗口尺寸取**逻辑与**：只有两边都说转好了才算成功。
+ * 浏览器不支持时（桌面 / 老 WebView）退化为只看窗口尺寸，行为与旧版一致。
+ */
 function matches(ori: Ori): boolean {
-  if (ori === 'landscape') return window.innerWidth > window.innerHeight;
-  if (ori === 'portrait') return window.innerHeight >= window.innerWidth;
-  return true; // sensor：任意方向都算成功
+  const bySize =
+    ori === 'landscape' ? window.innerWidth > window.innerHeight
+    : ori === 'portrait' ? window.innerHeight >= window.innerWidth
+    : true;
+  if (ori === 'sensor') return true;
+  if (!bySize) return false;
+
+  try {
+    const so = (screen as any)?.orientation;
+    const type: string | undefined = so?.type;
+    if (typeof type !== 'string' || !type) return true; // 不支持 → 只看尺寸
+    // type 形如 'landscape-primary' / 'landscape-secondary' / 'portrait-primary'
+    const side = type.split('-')[0];
+    if (ori === 'landscape') return side === 'landscape';
+    if (ori === 'portrait') return side === 'portrait';
+  } catch {
+    /* 取不到就退回只看尺寸 */
+  }
+  return true;
 }
 
 // 代际 token：每次请求 +1，作废之前所有未完成的校验链
