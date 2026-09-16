@@ -247,7 +247,10 @@ FULL_BLOCK = '''
                 try {
                     val win = window ?: return@runOnUiThread
                     if (android.os.Build.VERSION.SDK_INT >= 30) {
-                        val insets = win.insetsController
+                        // Window.insetsController 是可空的 WindowInsetsController?，必须先判空，
+                        // 否则 Kotlin 编译报错「only safe (?.) or non-null asserted (!!.) calls
+                        // are allowed on a nullable receiver」→ 整个 APK 构建失败。
+                        val insets = win.insetsController ?: return@runOnUiThread
                         if (visible) insets.show(android.view.WindowInsets.Type.statusBars())
                         else insets.hide(android.view.WindowInsets.Type.statusBars())
                     } else {
