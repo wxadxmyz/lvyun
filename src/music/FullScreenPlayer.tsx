@@ -8,6 +8,7 @@ import { SourceConfig, MediaItem } from '../engine/types';
 import { aggregateSearch, aggregateArtist } from '../engine';
 import { gradientFor } from '../lib/cover';
 import { Icon } from '../components/Icon';
+import ArtistPage from './ArtistPage';
 // v2.4.6 #7：命令式中文输入弹窗（替代 window.prompt —— Android WebView 的原生
 // JsPromptDialog 按钮文案是内置英文 CANCEL/OK，前端无法控制）
 import { promptText } from '../components/PromptDialog';
@@ -16,7 +17,7 @@ import { useToast } from '../lib/toast';
 import { pushBackHandler } from '../lib/backStack';
 // v2.4.2 #E：横屏真旋转（等桥 / 校验 / 代际 token / 失败不切 UI）
 import { requestOrientation } from '../lib/orientation';
-import { setStatusBarVisible, setLandscapeBars, syncNavBarNow } from '../lib/navBar';
+import { setStatusBarVisible, setLandscapeBars, syncNavBarNow, holdNavBarPush } from '../lib/navBar';
 
 const MODE_ICON: Record<string, { icon: 'repeat' | 'repeat-one' | 'shuffle'; label: string }> = {
   list: { icon: 'repeat', label: '列表循环' },
@@ -368,6 +369,9 @@ export function FullScreenPlayer({
     clearTimeout(landTimer.current);
     if (!showLandscape) {
       // 退出横屏：恢复竖屏系统栏主题色，清掉横屏的透明深底设置
+      // v2.5.2 #3：先解除冻结（内部立即补推主题色），否则退出横屏后系统栏
+      // 会一直停在横屏的透明状态，回竖屏就成了「系统栏透出窗口底色」。
+      holdNavBarPush(false);
       setLandHidden(false);
       setStatusBarVisible(true);
       syncNavBarNow();
@@ -375,10 +379,19 @@ export function FullScreenPlayer({
     }
     // v2.5.1 #5：进入横屏即让两条系统栏透明、播放器深底渐变透出
     // （通知栏/手势栏 = 播放器背景色）；并隐藏整条状态栏（点屏幕显控件时再显示）。
+    // v2.5.2 #3：冻结 navBar 的主题色染色 —— 横屏旋转 / 控件显隐都会触发 resize，
+    // safeArea.ts 改写 --sat/--sab 会唤醒 MutationObserver → push() 把两根条
+    // 染成 --bg 白色，把这里刚设好的透明顶掉（v2.5.1 白条没修好的根因）。
+    holdNavBarPush(true);
     setLandscapeBars();
     setStatusBarVisible(false);
     landTimer.current = window.setTimeout(() => setLandHidden(true), 3000);
-    return () => clearTimeout(landTimer.current);
+    return () => {
+      clearTimeout(landTimer.current);
+      // 兜底：若组件在横屏态被直接卸载（例如旋转窗口期父层换掉了播放页），
+      // 这里必须解除冻结，否则系统栏会一直停在横屏的透明状态。
+      holdNavBarPush(false);
+    };
   }, [showLandscape]);
 
   // v2.4.2 #E：横屏真旋转 —— 对齐幕海 VideoPlayer.tsx:332。
@@ -398,14 +411,22 @@ export function FullScreenPlayer({
   //   本 effect 在 showLandscape=false 时同样会跑（含组件首次挂载）——
   //   那时发的是静默的 portrait 归位，不该锁住任何东西，
   //   否则「每次打开播放页，前 3 秒点什么都没反应」。
+  // v2.5.2 #12：新增 landPending —— 「已发出横屏指令、但还没转成功」的中间态。
+  // 这段时间只铺 .ori-lock 深色遮罩（吃点击 + 挡住一切中间态），不渲染 .fs-land，
+  // 从而彻底消灭「点横屏先闪一个别的页面」。
+  const [landPending, setLandPending] = useState(false);
+
   useEffect(() => {
-    if (!showLandscape) {
-      // 退出 / 初始挂载：静默归位，不锁输入
+    // 既不在横屏、也没有待转请求 → 静默归位竖屏，不锁输入
+    if (!showLandscape && !landPending) {
       requestOrientation('portrait', { silent: true });
       setOriLocked(false);
       return;
     }
-    // 进入横屏：从这一刻到旋转完成（最长 ~6s）封住输入
+    // 已经在横屏里了 → 指令早就发过，这里不要再发（重复发会让 verifyGen 互相作废）
+    if (showLandscape) return;
+
+    // pending：发横屏指令 + 锁输入，等结果
     setOriLocked(true);
     let done = false;
     const unlock = () => { if (!done) { done = true; setOriLocked(false); } };
@@ -413,13 +434,18 @@ export function FullScreenPlayer({
       toast: toast.push,
       onResult: (ok) => {
         unlock();
-        if (!ok) setShowLandscape(false); // 转不过去 → 不留在半横屏状态
+        setLandPending(false);
+        if (ok) {
+          setShowLandscape(true); // 转成功了才渲染横屏 UI（视口此时已是横屏）
+        } else {
+          setShowLandscape(false);
+        }
       },
     });
     // 兜底解锁：桥不可用 / onResult 不回调时，4s 后强制解锁，避免界面卡死
     const t = window.setTimeout(unlock, 4000);
     return () => { clearTimeout(t); unlock(); };
-  }, [showLandscape, toast]);
+  }, [showLandscape, landPending, toast]);
 
   // v2.4.2 #E：卸载归位 —— 退出播放页时强制回竖屏，避免遗留横屏状态把主页也带横了。
   //
@@ -486,6 +512,35 @@ export function FullScreenPlayer({
     setDragIndex(null);
   };
 
+  // v2.5.2 #9：播放列表左滑删除。
+  // 能力本来就有（playerStore.ts 的 removeFromQueue），缺的是交互入口。
+  // 与 v2.5.1 的拖拽排序靠**方向**区分：竖向 = 拖拽（手柄），横向 = 左滑删除（整行）。
+  const [swiped, setSwiped] = useState<number | null>(null);
+  const swipeStartRef = useRef<{ x: number; y: number; idx: number } | null>(null);
+  const justSwipedRef = useRef(false);
+
+  const onPlRowTouchStart = (i: number) => (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    swipeStartRef.current = { x: t.clientX, y: t.clientY, idx: i };
+    justSwipedRef.current = false;
+  };
+  const onPlRowTouchMove = (e: React.TouchEvent) => {
+    const s = swipeStartRef.current;
+    if (!s) return;
+    const t = e.touches[0];
+    const dx = t.clientX - s.x;
+    const dy = t.clientY - s.y;
+    // 竖向位移为主 → 是拖拽/滚动，不干预
+    if (Math.abs(dx) <= Math.abs(dy)) return;
+    if (dx < -40) {
+      justSwipedRef.current = true;
+      setSwiped(s.idx);
+    } else if (dx > 24) {
+      setSwiped(null);
+    }
+  };
+  const onPlRowTouchEnd = () => { swipeStartRef.current = null; };
+
   // v2.4.5 #1：循环模式三态循环 + 明确反馈。
   // 旧实现只调 setMode 却不提示，而底部按钮三态共用一个 repeat 图标 —— 点了不知道切没切。
   // 现在：切换 → toast 文案 + 非「列表循环」时按钮染主题色（.pv-btn.mode.on）。
@@ -516,7 +571,12 @@ export function FullScreenPlayer({
     { key: 'land', icon: 'maximize', label: '横屏播放',
       onClick: () => {
         setShowMenu(false);
-        setShowLandscape(true);
+        // v2.5.2 #12：不再直接 setShowLandscape(true)。
+        //   旧实现一点就立刻渲染 .fs-land，而物理旋转是异步的（等桥 + 每 400ms
+        //   校验、最长 6s）—— 这几百毫秒里视口还是竖屏，横屏布局被塞进竖屏视口
+        //   渲染成一团错乱画面，用户看到的就是「先闪一下别的页面」。
+        //   现在先置 pending：转成功（onResult(true)）才真正渲染横屏页。
+        setLandPending(true);
       } },
   ];
 
@@ -579,97 +639,9 @@ export function FullScreenPlayer({
     dragLandBar.current = false;
   }, []);
 
-  // 作者主页：v2.4.9 #2 数据源由「按歌手名聚合搜索」改为「歌手全曲接口 artist()」。
-  //
-  // 历史：v2.4.5 #5 把「只在播放队列里筛」改成了「真的去音源搜一次」，解决了
-  // 「没播过的歌进不了作者页」。但拿歌手名当关键词去搜，得到的是**搜索结果**
-  // 而不是歌手作品库 —— 内容又少又脏（混翻唱 / live / 别人标注的歌）。
-  // 现在改调 artist()：酷狗 v2 源实测许嵩 256 首、周杰伦 353 首，封面还是 100%。
-  //
-  // 兼容：老式源没有 artist() 时（supported === 0 或结果为空），回退到聚合搜索，
-  // 不至于让作者页变成空白。
-  const [artistTracks, setArtistTracks] = useState<MediaItem[]>([]);
-  const [artistLoading, setArtistLoading] = useState(false);
-  // v2.4.9 #2.1：作者页取消 50 条硬上限后，热门歌手一次能回 300+ 首。
-  // 全部渲染会明显掉帧，这里做「分页上屏」：首屏 60 条，点「加载更多」每次再 +60。
-  // 顶部「作品」计数仍显示真实总数，不因分页而缩水。
-  const AUTHOR_PAGE_SIZE = 60;
-  const [authorShown, setAuthorShown] = useState(AUTHOR_PAGE_SIZE);
-  useEffect(() => { setAuthorShown(AUTHOR_PAGE_SIZE); }, [it.artist]);
-  useEffect(() => {
-    if (!showAuthor) return;
-    const artist = (it.artist ?? '').trim();
-    // v2.4.9 #2.4：只在歌手为空时清空的写法有竞态 —— 切换歌手时依赖数组里
-    // showAuthor / sources 不变，旧歌手的结果会先闪一下才被新结果替换。
-    // 改为 effect 一开始就清空，配合 alive 标志丢弃过期响应。
-    setArtistTracks([]);
-    if (!artist) { setArtistLoading(false); return; }
-    let alive = true;
-    setArtistLoading(true);
-    (async () => {
-      try {
-        const names = sources.filter((s) => s.enabled).map((s) => ({ id: s.id, name: s.name }));
-        const srcName = (id: string) => names.find((n) => n.id === id)?.name ?? '';
-        // 同标题去重（不同源同曲只留一条），队列里的同歌手歌曲排前面
-        const fromQueue = state.queue.filter((q) => q.artist === artist);
-        const seen = new Set<string>();
-        const merged: MediaItem[] = [];
-        const push = (list: MediaItem[]) => {
-          for (const q of list) {
-            const key = `${q.title}|${q.artist ?? ''}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            merged.push({ ...q, sourceName: q.sourceName || srcName(q.sourceId) } as MediaItem);
-          }
-        };
-
-        // v2.4.10 #6：改为「只增不改」的渐进合并。
-        //
-        // 旧实现是两步串行（await aggregateArtist → 必要时 await aggregateSearch），
-        // 每一步结束都 setArtistTracks(merged) **整体替换**。列表会从 82 首（队列+歌手
-        // 接口第一批）突然变成 90 首（搜索兜底又补了一批）。配合下面的 key={i} 用数组
-        // 下标，React 复用同一批 DOM 节点、且 onClick 闭包捕获的是旧数组 ——
-        // 于是「点第 2 行播第 1 行」。
-        //
-        // 现在：每拿到一批就先上屏（onPartial / 分步 push），并且**只追加新条目**，
-        // 已有条目的顺序与下标保持不变。这样即使用户在加载中途点击，索引也对得上。
-        push(fromQueue);
-        if (merged.length) setArtistTracks([...merged]);
-
-        // ① 歌手全曲接口（主路径）—— 支持 onPartial 时边到边上屏
-        const a = await aggregateArtist(sources, artist, {
-          onPartial: (partial) => {
-            if (!alive) return;
-            push(partial);
-            setArtistTracks([...merged]);
-          },
-        });
-        if (!alive) return;
-        push(a.items);
-        setArtistTracks([...merged]);
-
-        // ② 源不支持 artist() 或一条都没取到 → 回退按歌手名聚合搜索
-        if (merged.length <= fromQueue.length) {
-          const r = await aggregateSearch(sources, artist, { mediaType: 'music' });
-          if (!alive) return;
-          push(r.items);
-        }
-
-        if (!alive) return;
-        // v2.4.9 #2.1：去掉 50 条硬上限（原先无论源给多少都 slice(0,50)，
-        // 接口能返回 256 首也只显示 50）。改为展示全量，配合列表复用不预渲染全部。
-        setArtistTracks([...merged]);
-      } catch {
-        // v2.4.10 #6：出错时**不清空**已上屏的内容 —— 渐进渲染下列表可能已经有
-        // 好几十条（队列里的 + 先回来的源），一次异常不该把它们全抹掉。
-        // 真正空的情况是「一条都没取到」，那时列表本来就是空的，无需额外处理。
-      } finally {
-        if (alive) setArtistLoading(false);
-      }
-    })();
-    return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showAuthor, it.artist, sources]);
+  // v2.5.2 #10：作者主页的数据逻辑与页面已抽到 src/music/ArtistPage.tsx，
+  // 供「播放器页 ⋮ → 查看作者」与「搜索页 ⋮ → 查看歌手」两个入口共用，
+  // 这里不再自己维护 artistTracks / artistLoading / 分页状态。
 
   return (
     // v2.4.1 #D：外层改用 Fragment，让「3 点菜单」能挂在 .pv-root 之外。
@@ -940,8 +912,19 @@ export function FullScreenPlayer({
               <div
                 key={i}
                 data-idx={i}
-                className={'fs-pl-item' + (i === state.index ? ' active' : '') + (dragIndex === i ? ' dragging' : '')}
-                onClick={() => { if (justDraggedRef.current) { justDraggedRef.current = false; return; } player.playAt(i); }}
+                className={'fs-pl-item' + (i === state.index ? ' active' : '') + (dragIndex === i ? ' dragging' : '') + (swiped === i ? ' swiped' : '')}
+                onClick={() => {
+                  // v2.5.2 #9：刚左滑过 → 这一次抬手的 click 不算点击播放
+                  if (justSwipedRef.current) { justSwipedRef.current = false; return; }
+                  if (justDraggedRef.current) { justDraggedRef.current = false; return; }
+                  // 有行处于展开态时，点任意行先收起，不误播
+                  if (swiped !== null) { setSwiped(null); return; }
+                  player.playAt(i);
+                }}
+                onTouchStart={onPlRowTouchStart(i)}
+                onTouchMove={onPlRowTouchMove}
+                onTouchEnd={onPlRowTouchEnd}
+                onTouchCancel={onPlRowTouchEnd}
               >
                 <span className="pl-idx">{i === state.index ? <Icon name="play" size={13} /> : i + 1}</span>
                 <div className="pl-meta">
@@ -975,6 +958,19 @@ export function FullScreenPlayer({
                   onTouchMove={onPlHandleTouchMove}
                   onTouchEnd={onPlHandleTouchEnd}
                 ><Icon name="menu" size={16} /></span>
+                {/* v2.5.2 #9：左滑露出的删除按钮。平时 translateX(100%) 藏在行右侧之外，
+                    行加 .swiped 时整体滑入；点击直接 removeFromQueue，不弹二次确认
+                    （删错了可以再搜一次加回来，二次确认在播放场景里太重）。 */}
+                <button
+                  className="pl-del"
+                  title="从播放列表移除"
+                  aria-label="从播放列表移除"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    player.removeFromQueue(i);
+                    setSwiped(null);
+                  }}
+                ><Icon name="trash" size={16} /></button>
               </div>
             ))}
             {state.queue.length === 0 && <div className="muted sm" style={{ padding: 24, textAlign: 'center' }}>播放列表为空，去搜索或点播一首歌吧。</div>}
@@ -983,68 +979,20 @@ export function FullScreenPlayer({
         </div>
       )}
 
-      {/* 作者主页（完整页面） */}
+      {/* 作者主页（完整页面）—— v2.5.2 #10：改用公共组件 ArtistPage，
+          与搜索页「查看歌手」共用同一套页面（头像 / 作品数 / 全曲 / 分页）。 */}
       {showAuthor && (
-        <div className="fs-author">
-          <div className="fs-author-head">
-            <button className="icon" onClick={() => setShowAuthor(false)} aria-label="返回"><Icon name="arrow-left" /></button>
-            <div className="fs-author-ava">{(it.artist ?? '?').slice(0, 1)}</div>
-          </div>
-          <div className="fs-author-info">
-            <div className="fs-author-name">{it.artist ?? '未知艺术家'}</div>
-            <div className="fs-author-bio">原创音乐人 · 在律云与你相遇</div>
-          </div>
-          <div className="fs-author-stats">
-            {/* v2.4.5 #5：去掉写死的 `|| 12`（空也显示 12，是假数字），改真实数量
-                v2.4.10 #6：加载中固定显示「—」而不是「…」。
-                旧实现是 artistLoading ? '…' : length —— 列表渐进追加期间计数会
-                82 → 90 地跳，数字跳动本身就在提示「列表在变」，容易误导用户以为点错了。
-                加载完成后才显示真实条数。 */}
-            <div><div className="n">{artistLoading ? '—' : artistTracks.length}</div><div className="t">作品</div></div>
-            <div><div className="n">—</div><div className="t">粉丝</div></div>
-            <div><div className="n">—</div><div className="t">关注</div></div>
-          </div>
-          <div className="fs-author-acts">
-            <button className="fs-pill primary2" onClick={() => { setShowAuthor(false); player.playAt(state.index); }}>关注</button>
-            <button className="fs-pill" onClick={() => toast.push('已发送私信')}>私信</button>
-          </div>
-          <div className="fs-author-sec">热门作品</div>
-          <div className="fs-author-tracks">
-            {artistLoading && <div className="muted sm" style={{ padding: 16, textAlign: 'center' }}>正在获取「{it.artist}」的作品…</div>}
-            {!artistLoading && artistTracks.slice(0, authorShown).map((q, i) => (
-              // v2.4.10 #6：key 用「源 + 曲目 id」而不是数组下标。
-              //
-              //   key={i} 时，列表内容一变（82 → 90 首的渐进追加虽然现在只增不改，
-              //   但换歌手时整列表会被替换），React 会认为「第 i 个节点还是原来那个」
-              //   从而复用 DOM 与事件处理器 —— 而处理器闭包捕获的是**渲染当时的数组**，
-              //   于是点第 2 行触发的是旧数组的第 1 项。
-              //
-              //   用身份作 key 后，React 按条目身份比对，复用不会错位。
-              <div key={q.sourceId + ':' + q.id} className="fs-author-track" onClick={() => {
-                // v2.4.10 #6（兜底）：点击时按**身份**重新定位下标，而不是直接用渲染时的 i。
-                // 双保险 —— 即便将来有某条路径又改成整体替换列表，这里也不会播错。
-                const idx = artistTracks.findIndex((x) => x.sourceId === q.sourceId && x.id === q.id);
-                setShowAuthor(false);
-                // v2.4.10 #16：playQueue 内部已先停旧音频
-                player.playQueue(artistTracks, idx < 0 ? i : idx);
-              }}>
-                <span className="at-idx">{i + 1}</span>
-                <span className="at-cover" style={{ background: gradientFor(q.title) }} />
-                <span className="at-meta"><span className="at-name">{q.title}</span><span className="at-sub">{[q.artist, q.sourceName].filter(Boolean).join(' · ')}</span></span>
-              </div>
-            ))}
-            {!artistLoading && artistTracks.length > authorShown && (
-              <button className="link" style={{ padding: '12px 16px', alignSelf: 'center' }} onClick={() => setAuthorShown((n) => n + AUTHOR_PAGE_SIZE)}>
-                加载更多（还有 {artistTracks.length - authorShown} 首）
-              </button>
-            )}
-            {!artistLoading && artistTracks.length === 0 && (
-              <div className="muted sm" style={{ padding: 16, textAlign: 'center' }}>
-                {it.artist ? `没有获取到「${it.artist}」的作品，可能是该源不支持歌手全曲接口。` : '当前歌曲没有歌手信息。'}
-              </div>
-            )}
-          </div>
-        </div>
+        <ArtistPage
+          artist={it.artist ?? ''}
+          sources={sources}
+          queue={state.queue}
+          onPlay={(list, idx) => {
+            setShowAuthor(false);
+            // v2.4.10 #16：playQueue 内部已先停旧音频
+            player.playQueue(list, idx);
+          }}
+          onClose={() => setShowAuthor(false)}
+        />
       )}
 
       {/* v2.4.0 H1：横屏播放页 —— 无封面，中部给歌词；顶部中间歌名歌手；
@@ -1064,8 +1012,11 @@ export function FullScreenPlayer({
           </div>
           <div className="fs-land-content">
             <div className="fs-land-head">
-              <div className="fs-land-title">{it.title || '未在播放'}</div>
-              <div className="fs-land-sub">{[it.artist, it.album ? `《${it.album}》` : ''].filter(Boolean).join(' · ') || '未知艺术家'}</div>
+              {/* v2.5.2 #5：原来两行（歌名 / 歌手·专辑），改成单行「歌名 — 歌手」。
+                  专辑去掉——它本就是冗余信息，两行还把顶部撑高、字号被迫放大。 */}
+              <div className="fs-land-title">
+                {(it.title || '未在播放') + (it.artist ? ` — ${it.artist}` : '')}
+              </div>
             </div>
             <div className="fs-land-lyric" ref={landLyricRef} onTouchStart={onLyricTouch} onWheel={onLyricWheel}>
               {lyricLines.length ? (
@@ -1112,6 +1063,9 @@ export function FullScreenPlayer({
                 现在把时间行移到进度条外面（同级），并各自给固定宽度：
                 时间行不再参与进度条的裁剪，进度条也不被时间行撑高。 */}
             <div className="fs-land-progress" onClick={(e) => e.stopPropagation()}>
+              {/* v2.5.2 #8：时间与进度条同一行（旧实现时间行在进度条下方）。
+                  左=当前时间、中=进度条（flex:1 水平居中）、右=总时间。 */}
+              <span className="fs-land-cur">{fmtTime(state.progress)}</span>
               <div
                 className="fs-land-bar"
                 ref={landBarRef}
@@ -1131,10 +1085,7 @@ export function FullScreenPlayer({
                     看不出可拖动，也没有「抓手」的视觉反馈。 */}
                 <span className={'fs-land-thumb' + (empty ? ' zero' : '')} style={{ left: `${pct}%` }} />
               </div>
-              <div className="fs-land-times">
-                <span>{fmtTime(state.progress)}</span>
-                <span>{empty ? '-0:00' : fmtTime(state.duration)}</span>
-              </div>
+              <span className="fs-land-total">{empty ? '-0:00' : fmtTime(state.duration)}</span>
             </div>
           </div>
           {/* 隐藏态独立层：当前行歌词居中放大（避免流式布局位置跑偏，见 11.4①） */}

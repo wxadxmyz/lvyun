@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { setSplashBars, syncNavBarNow } from '../lib/navBar';
+import { setSplashBars, syncNavBarNow, holdNavBarPush } from '../lib/navBar';
 
 type Props = {
   appName: string;
@@ -22,14 +22,24 @@ export default function SplashScreen({
 
   useEffect(() => {
     // v2.5.0 #7：启动页要把系统状态栏 / 手势栏染成渐变两端色，避免白块。
+    // v2.5.2 #1：先冻结 navBar 的主题色染色（否则 1.2s 后 RETRIES 的 push()
+    // 会把刚设好的透明覆盖成 --bg 白色 —— 这正是 v2.5.0/v2.5.1 两版白条的根因）。
+    holdNavBarPush(true);
     setSplashBars(barColors.top, barColors.bottom);
     const t = setTimeout(() => setClosing(true), duration);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      holdNavBarPush(false); // 组件卸载兜底：一定解除冻结
+    };
   }, [duration, barColors.top, barColors.bottom]);
 
   // v2.5.0 #7：启动页消失后，恢复成应用主题色（navBar.ts 的 MutationObserver 也兜底）。
   useEffect(() => {
-    if (gone) syncNavBarNow();
+    if (gone) {
+      // v2.5.2 #1：解除冻结（内部会立即补推一次主题色）
+      holdNavBarPush(false);
+      syncNavBarNow();
+    }
   }, [gone]);
 
   if (gone) return null;

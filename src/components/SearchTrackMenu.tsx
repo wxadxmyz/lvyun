@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { MediaItem, SourceConfig } from '../engine/types';
-import { aggregateArtist } from '../engine';
 import { useLibrary } from '../lib/library';
 import { player } from '../lib/playerStore';
 import { downloadStore } from '../lib/downloads';
 import { Icon } from './Icon';
 import { gradientFor, initial } from '../lib/cover';
+import ArtistPage from '../music/ArtistPage';
 
 type Props = {
   item: MediaItem;
@@ -23,9 +23,11 @@ type Props = {
  * 「添加到歌单」展开歌单选择；「查看歌手」展开该歌手歌曲 sheet。
  */
 export function SearchTrackMenu({ item, sources, library, onPlay, onClose }: Props) {
-  // 子视图状态：null=主菜单；'playlist'=歌单选择；artist=歌手歌曲
-  const [view, setView] = useState<'main' | 'playlist' | 'artist'>('main');
-  const [artistState, setArtistState] = useState<{ loading: boolean; items: MediaItem[]; error?: string }>({ loading: false, items: [] });
+  // 子视图状态：null=主菜单；'playlist'=歌单选择
+  // v2.5.2 #10：'artist' 视图删掉 —— 原来是在这个小 sheet 里塞简版列表，
+  // 与播放器页的完整歌手主页不是一个东西。现在统一打开公共组件 ArtistPage。
+  const [view, setView] = useState<'main' | 'playlist'>('main');
+  const [artistPage, setArtistPage] = useState<string | null>(null);
 
   const fav = library.isFavorite(item);
 
@@ -44,19 +46,12 @@ export function SearchTrackMenu({ item, sources, library, onPlay, onClose }: Pro
 
   const createPlaylist = () => { library.createPlaylistWith('我的歌单', item); onClose(); };
 
-  const openArtist = async () => {
+  // v2.5.2 #10：不再自己拉数据，直接打开与播放器页同一个完整歌手主页
+  const openArtist = () => {
     if (!item.artist) return;
-    setView('artist');
-    setArtistState({ loading: true, items: [] });
-    try {
-      const r = await aggregateArtist(sources, item.artist, { timeout: 40000 });
-      setArtistState({ loading: false, items: r.items });
-    } catch (e: any) {
-      setArtistState({ loading: false, items: [], error: e?.message || '获取失败' });
-    }
+    setArtistPage(item.artist);
   };
 
-  const playArtistSong = (it: MediaItem) => { onPlay(it); onClose(); };
 
   return (
     <div className="fs-menu-mask" onClick={onClose}>
@@ -123,33 +118,25 @@ export function SearchTrackMenu({ item, sources, library, onPlay, onClose }: Pro
           </>
         )}
 
-        {view === 'artist' && (
-          <>
-            <div className="fs-sheet-head">
-              <button className="stm-back" onClick={() => setView('main')} aria-label="返回"><Icon name="arrow-left" size={22} /></button>
-              <div className="sh-title">歌手 · {item.artist}</div>
-            </div>
-            {artistState.loading && <div className="muted sm" style={{ padding: 12 }}>加载中…</div>}
-            {artistState.error && <div className="muted sm" style={{ padding: 12 }}>{artistState.error}</div>}
-            {!artistState.loading && !artistState.error && artistState.items.length === 0 && (
-              <div className="muted sm" style={{ padding: 12 }}>没有获取到「{item.artist}」的作品</div>
-            )}
-            <div className="stm-artist-list">
-              {artistState.items.map((it, i) => (
-                <button key={it.sourceId + it.id + i} className="track-row tl2" onClick={() => playArtistSong(it)}>
-                  <span className="tcover">
-                    {it.cover ? <img src={it.cover} alt="" /> : <span style={{ background: gradientFor(it.title) }}>{initial(it.title)}</span>}
-                  </span>
-                  <span className="tmain">
-                    <span className="ttitle">{it.title}</span>
-                    <span className="tsub">{it.album || it.sourceName || ''}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
       </div>
+
+      {/* v2.5.2 #10：歌手主页（与播放器页「查看作者」同一个组件）。
+          挂在 sheet 之外、mask 之内，铺满全屏盖住底部 sheet。 */}
+      {artistPage && (
+        <div className="stm-artist-page" onClick={(e) => e.stopPropagation()}>
+          <ArtistPage
+            artist={artistPage}
+            sources={sources}
+            queue={player.getState().queue}
+            onPlay={(list, idx) => {
+              player.playQueue(list, idx);
+              setArtistPage(null);
+              onClose();
+            }}
+            onClose={() => setArtistPage(null)}
+          />
+        </div>
+      )}
     </div>
   );
 }

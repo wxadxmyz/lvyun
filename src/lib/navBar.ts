@@ -50,7 +50,34 @@ function isLightColor(hex: string): boolean {
   return (r * 299 + g * 587 + b * 114) / 1000 > 170;
 }
 
+/**
+ * v2.5.2 #1/#2：系统栏染色「冻结」开关。
+ *
+ * 背景（v2.5.0 / v2.5.1 连续两版启动页白条都没修好的真正原因）：
+ *   push() 会把两条系统栏染成主题色 --bg（浅色主题下就是白色 #f4f5f9）。
+ *   而 push() 会被 installNavBarSync 的 RETRIES 定时、MutationObserver、
+ *   focus / visibilitychange 反复触发 —— 其中 MutationObserver 是 safeArea.ts
+ *   每次改写 --sat/--sab 时触发的（横屏旋转、状态栏显隐都会引发 resize）。
+ *
+ *   于是：
+ *     启动页  setSplashBars(透明) 生效 → 1.2s 后 RETRIES 的 push() 覆盖成白色
+ *     横屏    setLandscapeBars(透明) 生效 → 旋转 resize 引发的 push() 覆盖成白色
+ *   两处白条是同一个凶手。
+ *
+ * 做法：启动页 / 横屏期间把 hold 置 true，push() 直接短路；退出时置 false 并
+ * 立即补推一次主题色，恢复正常页面的染色行为。
+ */
+let holdPush = false;
+
+export function holdNavBarPush(hold: boolean): void {
+  holdPush = hold;
+  if (!hold) push(); // 解除冻结时立刻把主题色补回去
+}
+
 function push(): boolean {
+  // v2.5.2 #1/#2：启动页 / 横屏期间不参与染色，避免覆盖 setSplashBars /
+  // setLandscapeBars 设好的透明。
+  if (holdPush) return false;
   try {
     const bridge = (window as any).LvYunAndroid;
     if (!bridge) return false;

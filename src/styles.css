@@ -551,7 +551,10 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
      这样 safeArea.ts 的 JS 兜底与 @supports 的 max() 升级都能自动生效）；
      底部给 Tab 与手势条让位。v2.4.2 #B：顶部在 --sat 基础上再加 10px 缓冲，
      保证「汉堡 / 未在播放 / 竖三点」整条顶栏稳稳落在状态栏正下方，不被通知栏压到。 */
-  .pv-player { padding: calc(var(--sat, 26px) + 10px) 20px calc(var(--tabbar) + var(--sab) + 6px); }
+  /* v2.5.2 #4：顶部余量 10px → 18px。
+     v2.5.1 把顶栏并成单行后，标题上沿紧贴这 10px，而 --sat 的兜底值偏小，
+     真机上标题顶部被状态栏压掉一点（用户实测红圈处）。加大呼吸位 + 标题缩字。 */
+  .pv-player { padding: calc(var(--sat, 26px) + 18px) 20px calc(var(--tabbar) + var(--sab) + 6px); }
 
   /* 底部 Tab 导航 */
   .bottom-nav {
@@ -874,6 +877,19 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .fs-pl-head .pl-mode{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:999px;padding:6px 14px;font-size:13px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;}
 .fs-pl-list{flex:1;overflow:auto;padding:8px 12px;}
 .fs-pl-item{display:flex;align-items:center;gap:12px;padding:12px 8px;border-radius:10px;cursor:pointer;}
+/* v2.5.2 #9：左滑删除（与 v2.5.1 的拖拽排序共存：竖向=拖拽、横向=删除）。
+   行内除 .pl-del 之外的所有子元素一起左移，右侧让出 76px 露出红色删除按钮。 */
+.fs-pl-item{ position:relative; overflow:hidden; }
+.fs-pl-item > *:not(.pl-del){ transition:transform .18s ease; }
+.fs-pl-item.swiped > *:not(.pl-del){ transform:translateX(-76px); }
+.fs-pl-item .pl-del{
+  position:absolute; top:0; bottom:0; right:0; width:76px;
+  display:flex; align-items:center; justify-content:center;
+  background:#e5484d; color:#fff; border:none; cursor:pointer;
+  transform:translateX(100%); transition:transform .18s ease;
+}
+.fs-pl-item .pl-del svg{ width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
+.fs-pl-item.swiped .pl-del{ transform:translateX(0); }
 .fs-pl-item:hover{background:var(--panel2);}
 .fs-pl-item.active{background:var(--panel2);}
 .fs-pl-item .pl-idx{width:24px;text-align:center;color:var(--muted);font-size:13px;flex-shrink:0;}
@@ -1021,14 +1037,19 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 /* v2.4.0 H1：横屏去封面，整块给歌词；上 歌名歌手 / 中 歌词 / 下 进度条 */
 .fs-land-content{ position:relative; z-index:1; flex:1; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:calc(64px + var(--sat)) calc(28px + var(--sar)) calc(28px + var(--sab)) calc(28px + var(--sal)); transition:opacity .4s; }
 .fs-land-head{ text-align:center; }
-.fs-land-title{ font-size:clamp(22px,4vw,30px); font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fs-land-title{ font-size:clamp(15px,2.4vw,18px); font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .fs-land-sub{ font-size:14px; color:var(--muted); }
-/* v2.4.10 #11：时间行从 .fs-land-bar 内部移出（旧结构见下方 .fs-land--legacy 注释），
-   改由 .fs-land-progress 包住「进度条 + 时间行」两层，各自独立排版。 */
+/* v2.5.2 #8：改成「当前时间 | 进度条 | 总时间」横向一行。
+   旧结构是竖向两列（进度条在上、时间行在下，且时间行两端对齐），
+   用户要求时间与进度条**平行**。进度条 flex:1 居中，两侧时间不参与伸缩。 */
 .fs-land-progress{
   width:100%; max-width:760px; flex:none;
-  display:flex; flex-direction:column; gap:6px;
+  display:flex; flex-direction:row; align-items:center; gap:12px;
   cursor:pointer;
+}
+.fs-land-cur,.fs-land-total{
+  flex:0 0 auto; font-size:12px; color:var(--muted);
+  font-variant-numeric:tabular-nums; white-space:nowrap;
 }
 .fs-land-bar{ width:100%; height:4px; border-radius:4px; background:rgba(255,255,255,.14); position:relative;
               /* v2.4.10 #10：touch-action:none 让指针拖动不被浏览器当成页面滚动抢走 */
@@ -1064,7 +1085,10 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .fs-land.hidden .fs-land-content { opacity:0; pointer-events:none; }
 /* 隐藏态独立层：当前行居正中、加大 */
 .ld-solo{ position:absolute; inset:0; z-index:2; display:flex; align-items:center; justify-content:center; padding:0 12%; text-align:center;
-  font-size:29px; font-weight:800; line-height:1.4; color:transparent;
+  /* v2.5.2 #7：29px → 36px（用户反馈「控件隐藏时只剩一行歌词，字体要大一点」）。
+     29px 原是为了迁就控件态 active 行 28px、避免切换瞬间字跳变；现在按用户
+     要求加大，切换时的字号差异是预期的视觉分层（已确认可接受）。 */
+  font-size:36px; font-weight:800; line-height:1.4; color:transparent;
   background:linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text; background-clip:text; animation:fade .3s; }
 
 /* v2.4.0 H1：竖屏全屏歌词页（点封面进入） */
@@ -1348,8 +1372,15 @@ body.landscape-on .fs-land-content{
    （它是唯一的 flex:1），控件位置反而上移 —— 与「按钮要往下走」的诉求相反。
    所以必须给控制行显式下移：margin-top:auto 把剩余空间全部推到它上方，贴向底部；
    margin-bottom 再与进度条拉开距离，避免"贴在进度条上"。 */
+/* v2.5.2 #6：去掉 margin-top:auto。
+   ---------------------------------------------------------------------------
+   旧规则的 auto margin 会**优先吸走全部自由空间**，于是布局变成：
+     head 贴顶 → 歌词区紧贴 head（中间没有空隙）→ [一大片空白] → 控制行 → 进度条
+   歌词区虽然 flex:1，但它被 max-height:118.4px 锁死，三行只能在自己那一小块里
+   居中，而那一小块本身贴在顶部 —— 用户反馈「三行歌词那么靠上」。
+   现在把 auto margin 交给歌词区（上下均分），控制行只用固定间距。 */
 body.landscape-on .fs-land-ctrls{
-  margin-top:auto;
+  margin-top:0;
   margin-bottom:14px;
 }
 /* #4.3：进度条不再被歌词挤掉。
@@ -1359,7 +1390,9 @@ body.landscape-on .fs-land-ctrls{
 body.landscape-on .fs-land-head{ flex:none; margin-top:0; }
 body.landscape-on .fs-land-ctrls{ flex:none; }
 body.landscape-on .fs-land-progress{ flex:none; margin-top:0; }
-body.landscape-on .fs-land-bar{ flex:none; margin-top:0; }
+/* v2.5.2 #8：横屏进度条改为横向三段中的中间段 → 需要吃掉剩余宽度（flex:1）。
+   旧值 flex:none 是竖向两列时期的设定（高度固定、宽度 100%）。 */
+body.landscape-on .fs-land-bar{ flex:1 1 auto; min-width:0; margin-top:0; }
 
 /* #4.5 + #4.7 + #4.6：控件显示态的歌词区 —— 锁 3 行、可上下滑、当前行高亮、
    字号上限锁 29px（隐藏态 .ld-solo 是 29px，控件显示时不能超过它，否则隐藏瞬间
@@ -1379,6 +1412,12 @@ body.landscape-on .fs-land-bar{ flex:none; margin-top:0; }
 body.landscape-on .fs-land-lyric{
   flex:1 1 auto;
   min-height:0;
+  /* v2.5.2 #6：上下 auto margin —— 剩余空间在歌词区上下均分，
+     三行歌词因此在「顶部标题」与「底部控制区」之间真正垂直居中。
+     （有 auto margin 时 flex-grow 不再吃到自由空间，歌词区保持内容高度，
+       被 max-height 锁在 118.4px，正好是三行的高度。） */
+  margin-top:auto;
+  margin-bottom:auto;
   /* 普通行 24×1.4=33.6 · active 行 28×1.4=39.2 · 两处 gap 各 6 */
   max-height: calc(33.6px * 2 + 39.2px + 6px * 2);
   overflow-y:auto;
@@ -1432,7 +1471,10 @@ body.landscape-on .toast-wrap{
    保证旋转过程中没有任何元素能抢到点击。 */
 .ori-lock{
   position:fixed; inset:0; z-index:200;
-  background:transparent;
+  /* v2.5.2 #12：原来是 transparent —— 只吃点击、**不挡视觉**，
+     于是旋转空窗里那些错乱画面用户全看得见（"先闪一下别的页面"）。
+     改成与横屏背景同色的不透明深底：既吃点击，也把中间态彻底遮住。 */
+  background:linear-gradient(120deg,#0e0c12,#15101b);
   pointer-events:auto;
   cursor:default;
 }
@@ -1554,7 +1596,7 @@ body.landscape-on .fs-land.hidden .fs-land-back{ opacity:0; pointer-events:none;
   gap:1px; text-align:center;
 }
 .pv-now-title{
-  max-width:100%; font-size:20px; font-weight:800; line-height:1.25; color:var(--text);
+  max-width:100%; font-size:16px; font-weight:800; line-height:1.25; color:var(--text);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .pv-now-sub{
@@ -1707,7 +1749,11 @@ body.landscape-on .fs-land.hidden .fs-land-back{ opacity:0; pointer-events:none;
    这里补「进度条以下的区域也吃背景色」与时间行间距，让底边不再显空。
    ========================================================================== */
 body.landscape-on .fs-land{
-  background:var(--bg);
+  /* v2.5.2 #3：这里原来是 var(--bg) —— 浅色主题下就是 #f4f5f9 白色。
+     系统栏在 v2.5.1 已改成透明，透明之后透出的正是这一层背景，
+     于是顶部状态栏、底部手势栏就成了两条白带（用户实测反馈）。
+     改回横屏专用深渐变：与播放器画面同色，中部粉色由 .fs-land-orb 提供。 */
+  background:linear-gradient(120deg,#0e0c12,#15101b);
 }
 body.landscape-on .fs-land-content{ justify-content:space-between; }
 /* v2.4.9 #4：横屏歌词区的完整定义已上移到「第 4 部分」段落（含 3 行锁高、
@@ -1748,6 +1794,53 @@ body.landscape-on .fs-land-times{ margin-top:4px; margin-bottom:0; }
 .search-track-menu .fs-sheet-head .icon img,
 .search-track-menu .fs-sheet-head .icon span{ width:100%; height:100%; border-radius:50%; object-fit:cover; }
 .search-track-menu .fs-sheet-head .icon span{ display:grid; place-items:center; font-size:15px; color:#fff; }
+/* v2.5.2 #10：搜索页「查看歌手」打开的全屏歌手主页容器。
+   挂在 .fs-menu-mask（fixed 全屏，z-index 92）内、sheet 之外，
+   用 96 保证完整盖住底部 sheet。 */
+.stm-artist-page{ position:fixed; inset:0; z-index:96; }
 .search-track-menu .stm-artist-list{ display:flex; flex-direction:column; gap:2px; }
 .search-track-menu .stm-artist-list .track-row{ background:transparent; }
 .search-track-menu .stm-artist-list .track-row:hover{ background:var(--panel2); }
+
+/* ==========================================================================
+   v2.5.2 #11：底部迷你播放条（MiniPlayer）
+   --------------------------------------------------------------------------
+   位置：底部 Tab 之上（bottom = tabbar + sab），高 56px。
+   .main 的底部 padding 是 calc(var(--tabbar) + var(--sab) + 80px)，
+   80px 余量 > 56px 条高，所以列表最后一行不会被挡，无需再给页面加预留。
+   z-index 74：高于普通内容、低于横屏层(78) 与 3 点菜单(92)，播放页打开时组件
+   直接不渲染（hidden），不会和播放页自己的控件打架。
+   ========================================================================== */
+.mini-player{
+  position:fixed; left:8px; right:8px;
+  bottom:calc(var(--tabbar,50px) + var(--sab,0px));
+  z-index:74;
+  height:56px; border-radius:12px; overflow:hidden;
+  display:flex; align-items:center; gap:10px; padding:0 8px 0 10px;
+  background:var(--panel); border:1px solid var(--border);
+  box-shadow:0 6px 20px rgba(0,0,0,.28);
+  cursor:pointer; animation:fade .2s;
+}
+/* 顶部 2px 细进度线：不占布局高度，只做「播到哪了」的提示 */
+.mini-player .mp-bar{ position:absolute; left:0; right:0; top:0; height:2px; background:var(--panel2); }
+.mini-player .mp-bar i{ display:block; height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2)); }
+.mini-player .mp-cover{
+  width:40px; height:40px; border-radius:8px; flex:0 0 auto;
+  background-size:cover; background-position:center;
+  display:grid; place-items:center; font-size:15px; font-weight:700; color:#fff;
+}
+.mini-player .mp-meta{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.mini-player .mp-title{ font-size:14px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mini-player .mp-sub{ font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mini-player .mp-btn{
+  width:36px; height:36px; flex:0 0 auto; border:none; border-radius:50%;
+  background:transparent; color:var(--text); display:grid; place-items:center; cursor:pointer;
+}
+.mini-player .mp-btn:hover{ background:var(--panel2); }
+.mini-player .mp-btn svg{ fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
+/* Toast 上移，避免被迷你条压住（原为 tabbar + sab + 12px） */
+@media (max-width:820px){
+  .toast-wrap { bottom: calc(var(--tabbar) + var(--sab) + 76px); }
+}
+/* 横屏时不显示迷你条（横屏层 z-index 78 已盖过它，这里再显式隐藏一次更干净） */
+body.landscape-on .mini-player{ display:none !important; }
