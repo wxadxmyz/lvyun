@@ -23,6 +23,8 @@ export function AddSourceModal({
     tvbox: 'http://www.饭太硬.cc/tv',
     // JS 脚本源：可填 spider 远程脚本地址，或留空后在「导入 json 音源」里粘贴脚本
     js: 'https://example.com/spider.js',
+    // v2.4.9：聚合订阅 —— 填一个能返回「源配置数组」的地址（如 gitee raw 的 sources.json）
+    bundle: 'https://gitee.com/xxx/muhai-sources/raw/master/sources.json',
     mock: '',
   };
 

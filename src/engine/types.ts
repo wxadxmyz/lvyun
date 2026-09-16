@@ -1,7 +1,7 @@
 // 统一媒体源引擎 —— 核心类型定义
 // 与《媒体源引擎接口规范 v1》保持一致
 
-export type SourceType = 'music-json' | 'alist' | 'mock' | 'tvbox' | 'js';
+export type SourceType = 'music-json' | 'alist' | 'mock' | 'tvbox' | 'js' | 'bundle';
 
 export type MediaType = 'music' | 'video';
 
@@ -80,7 +80,20 @@ export interface PlayUrl {
 export interface MediaSource {
   search(keyword: string, page?: number): Promise<MediaItem[]>;
   getPlayUrl(itemId: string): Promise<PlayUrl>;
-  getDetail?(itemId: string): Promise<MediaItem>;
+  /**
+   * v2.4.9 #2.2：歌手全曲（作者页数据源）。可选实现。
+   * 与 aggregateSearch 拿「搜索结果冒充作品库」不同，这是源提供的真实歌手作品库
+   * （酷狗 v2 源实测：许嵩 256 首 / 周杰伦 353 首，且封面 100%）。
+   * 源未实现时上层回退为按歌手名聚合搜索。
+   */
+  getArtistSongs?(artist: string): Promise<MediaItem[]>;
+  /**
+   * v2.4.9 #1.3/#1.5.6：详情通道（封面回填用）。
+   * 参数兼容两种调用：传完整 MediaItem（**推荐**，源的 detail 常要靠歌名+歌手
+   * 去别处兜底封面，如酷我 kgCover 走酷狗 union_cover），或只传 id 字符串。
+   * 旧实现只认裸 id，导致酷我 / 网易云的封面兜底永远拿不到入参，cover 恒空。
+   */
+  getDetail?(item: MediaItem | string): Promise<MediaItem>;
   /**
    * v2.4.8 #1：歌词获取通道。
    * 返回 LRC 原文（含 [mm:ss.xx] 时间轴的字符串）、已解析好的 LyricLine[]，
@@ -96,6 +109,11 @@ export const SOURCE_TYPES: { value: SourceType; label: string; desc: string }[] 
   { value: 'alist', label: '云盘(alist)', desc: '阿里云盘/夸克/UC/115 等统一网关' },
   { value: 'tvbox', label: '影视仓聚合', desc: '粘贴影视仓/饭太硬式配置地址，自动解析多站点（蜘蛛源走 JS 引擎）' },
   { value: 'js', label: 'JS 脚本源', desc: '粘贴 spider 脚本或远程脚本地址，引擎执行（支持蜘蛛源/加密源）' },
+  {
+    value: 'bundle',
+    label: '聚合订阅（一个地址多个子站）',
+    desc: '填一个订阅地址（sources.json 数组），源管理只占 1 行，搜索时内部自动展开成多个子站',
+  },
 ];
 
 export function uuid(): string {

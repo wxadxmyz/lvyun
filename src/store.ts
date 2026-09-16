@@ -1,5 +1,5 @@
 import { useCallback, useSyncExternalStore } from 'react';
-import { createSource, SourceConfig, SourceType, uuid } from './engine';
+import { clearBundleCache, createSource, peekBundleSubs, SourceConfig, SourceType, uuid } from './engine';
 import { fetchFromUrl } from './lib/sourceFetch';
 
 const PREFIX = 'mps_sources_';
@@ -126,6 +126,9 @@ export function useSources(appKey: string) {
   }, [appKey]);
 
   const remove = useCallback((id: string) => {
+    // v2.4.9：删掉聚合订阅时顺手清掉它的子源缓存，避免残留 localStorage 条目
+    const target = getSnapshot(appKey).find((x) => x.id === id);
+    if (target?.type === 'bundle') clearBundleCache(target.subUrl || target.baseUrl);
     mutate(appKey, (s) => s.filter((x) => x.id !== id));
   }, [appKey]);
 
@@ -170,6 +173,22 @@ export function useSources(appKey: string) {
   // 不存在则新增，统一打上 subUrl + subUpdatedAt。
   const refreshSubscription = useCallback(async (subUrl: string): Promise<{ ok: number; errors: string[] }> => {
     try {
+      // v2.4.9：聚合订阅源（bundle）刷新 = 清掉子源缓存后重拉，**不展开成多行**。
+      // 否则「1 项」会在刷新后变回 N 项，正是这次要消灭的行为。
+      const bundle = getSnapshot(appKey).find((x) => x.type === 'bundle' && (x.subUrl === subUrl || x.baseUrl === subUrl));
+      if (bundle) {
+        clearBundleCache(subUrl);
+        const list = await peekBundleSubs(bundle);
+        if (!list || !list.length) {
+          return { ok: 0, errors: ['订阅刷新失败：地址不可达或内容不是源数组'] };
+        }
+        mutate(appKey, (s) => {
+          const hit = s.find((x) => x.id === bundle.id);
+          if (hit) hit.subUpdatedAt = Date.now();
+          return s;
+        });
+        return { ok: list.length, errors: [] };
+      }
       const res = await fetchFromUrl(subUrl);
       if (res.kind !== 'sources') {
         return { ok: 0, errors: [res.kind === 'error' ? res.message : '订阅未返回可用源'] };

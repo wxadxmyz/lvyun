@@ -161,11 +161,42 @@ export function createJsSource(cfg: SourceConfig): MediaSource {
       return { url };
     },
 
-    async getDetail(itemId: string) {
+    /**
+     * v2.4.9 #1.3/#1.5.6：detail 通道改造（封面回填的前提）。
+     *
+     * 旧实现只把裸 id 传给 spider：`call('detail', [itemId])`。而本工程的音乐源
+     * （酷我 / 网易云 / 咪咕）在 detail 里要靠**歌名 + 歌手**去兜底封面——酷我是
+     * `kgCover(name, artist)` 回落到酷狗 union_cover，网易云是匿名 picUrl 常空需回查。
+     * 只给 id 时 name/artist 全空，兜底必然返回空串：封面永远补不上，
+     * 这就是「1.3 酷我无封面」的真根因之一（另一半是过去 getDetail 零调用点）。
+     *
+     * 现在与 getLyric 保持同一契约：把 {id,name,title,artist,album} 序列化为 JSON
+     * 字符串作为第 1 个参数，同时把裸 id 作为第 2 个参数带上，兼容只吃 id 的老源。
+     * （Rust 侧 args 是字符串数组，会原样展开成 func(...args)，传不了对象。）
+     */
+    async getDetail(itemOrId: MediaItem | string) {
+      const obj: any = typeof itemOrId === 'string' ? { id: itemOrId } : itemOrId;
+      const id = String(obj?.id ?? '');
+      const payload = {
+        id,
+        name: obj?.title ?? obj?.name ?? '',
+        title: obj?.title ?? obj?.name ?? '',
+        artist: obj?.artist ?? obj?.singer ?? '',
+        album: obj?.album ?? '',
+        pic: obj?.cover ?? '',
+      };
       try {
-        const data = await call('detail', [itemId]);
-        const list = data?.list ?? (Array.isArray(data) ? data : []);
-        const items = toItems(list);
+        const data = await call('detail', [JSON.stringify(payload), id]);
+        // 形态兼容：spider 的 detail 有两种常见返回约定
+        //   1) { list:[{...}] }  —— CatVod 风格
+        //   2) { id,name,artist,pic }  —— 单对象（本工程 4 个直连源都是这种）
+        // 旧实现只认 1)，遇到酷我那种单对象会走到「拿不到内容」分支抛错，
+        // 封面回填被静默吞掉 —— 表现为「改了 getDetail 调用点，封面还是没有」。
+        let first: any;
+        if (Array.isArray(data)) first = data[0];
+        else if (Array.isArray(data?.list)) first = data.list[0];
+        else if (data && typeof data === 'object') first = data;
+        const items = first ? toItems([first]) : [];
         if (items[0]) return items[0];
         // v2.4.1 #I：详情拿不到内容时明确抛错，不再静默返回空 title 占位对象。
         // 此前返回 { title: '' } 会让上层拿到一个「没有歌名的歌」，
@@ -216,6 +247,31 @@ export function createJsSource(cfg: SourceConfig): MediaSource {
         }
       }
       return s;
+    },
+
+    /**
+     * v2.4.9 #2.2：歌手全曲（作者页数据源）。
+     * spider 的 artist(i) 入参是 JSON 串（un() 解开），取 artist / singername / name
+     * 任一字段定位歌手；返回 { list:[...] }。老式源没有 artist 函数时 call 会抛，
+     * 由聚合层静默跳过并回退到按歌手名搜索。
+     */
+    async getArtistSongs(artistName: string) {
+      const name = String(artistName ?? '').trim();
+      if (!name) return [];
+      const payload = { artist: name, singername: name, name, title: name };
+      const data = await call('artist', [JSON.stringify(payload), name]);
+      let list: any[];
+      if (Array.isArray(data)) list = data;
+      else if (Array.isArray(data?.list)) list = data.list;
+      else if (data && typeof data === 'object') list = [data];
+      else list = [];
+      const items = toItems(list);
+      // 作者页要的是「这个歌手的歌」。源返回的是该歌手作品库，正常情况是干净的，
+      // 但翻唱/合辑可能混入他人曲目，这里做一次宽松筛选：
+      // 歌手名相互包含即视为命中（「许嵩&Kent」与「许嵩」互含，合唱曲不会被误杀）。
+      const hit = (a: string) =>
+        !a || a === name || a.includes(name) || name.includes(a);
+      return items.filter((it) => hit(String(it.artist ?? '')));
     },
 
     async test() {

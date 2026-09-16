@@ -9,8 +9,15 @@
      .main / 各页顶部的 padding-top 全部失效，卡片上滑时一路滚进通知栏区域。
      对齐慕海 v3.5.0（styles.css:10）把兜底抬到 26px，并对齐其「不支持 max() 的 WebView
      会整条声明判无效」的坑，这里不套 max()。JS 兜底（lib/safeArea.ts）会在实测后再覆盖。 */
-  --sat: env(safe-area-inset-top, 34px);
-  --sab: max(env(safe-area-inset-bottom, 0px), 18px); /* 兜底至少18px，避免安卓手势条遮挡底部导航 */
+  /* v2.4.9 #3.1：--sat 兜底 34px → 44px。
+     竖屏歌词页顶栏被状态栏压住的实测根因：相当一部分国产 ROM 在 edge-to-edge 下
+     上报 safe-area-inset-top: 0px，兜底值就是真实可用值；34px 对挖孔/刘海机偏低，
+     歌词页顶栏（12px + --sat）仍会钻进状态栏。抬到 44px 与慕海对齐。 */
+  --sat: env(safe-area-inset-top, 44px);
+  /* v2.4.9 #4.2：--sab 兜底 18px → 28px。
+     横屏 WebView 的 env(safe-area-inset-bottom) 常为 0，退到兜底值后叠呼吸位
+     仍窄于安卓手势条（实测 24–34px），底部出现一条空白带。抬高兜底。 */
+  --sab: max(env(safe-area-inset-bottom, 0px), 28px);
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
   --tabbar: 50px; /* 底部 Tab 栏主体高度（不含手势条安全区），v2.3.9 由 56px 收紧 */
@@ -23,7 +30,7 @@
    反而导致 --sat 未定义、所有 var(--sat) 失效（卡片上滑盖到通知栏），故必须分段。 */
 @supports (top: max(1px, 2px)) {
   :root {
-    --sat: max(env(safe-area-inset-top, 0px), 34px);
+    --sat: max(env(safe-area-inset-top, 0px), 44px);
   }
 }
 /* 每套皮肤的 --bg/--panel/--accent 等由 theme.tsx 写到 documentElement；
@@ -803,6 +810,12 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 /* v2.4.0 A2：订阅源标记 */
 .sub-badge{ display:inline-block; margin-left:8px; padding:1px 7px; border-radius:6px; font-size:11px; font-weight:600;
   color:var(--accent); background:color-mix(in srgb, var(--accent) 16%, transparent); vertical-align:middle; }
+/* v2.4.9：聚合订阅源卡片里的子站名小胶囊 —— 让「1 项」内部有什么一眼可见 */
+.sc-subs{ display:flex; flex-wrap:wrap; gap:6px; padding:2px 0 8px; }
+.sc-sub-chip{
+  padding:2px 8px; border-radius:8px; font-size:11px;
+  color:var(--muted); background:var(--panel2); border:1px solid var(--border);
+}
 .icon.sm { width: 34px; height: 34px; }
 
 .empty-hint { text-align: center; color: var(--muted); padding: 60px 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
@@ -834,6 +847,10 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .searchview .searchtop .primary{height:38px;padding:0 18px;white-space:nowrap;font-size:14px;border-radius:19px;flex-shrink:0;}
 .searchview .searchtop .sinput .search-ico{color:var(--muted);display:flex;}
 .searchview .searchtop .sclear{width:18px;height:18px;border-radius:50%;background:#3a3a42;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none;border:none;cursor:pointer;padding:0;line-height:1;}
+/* v2.4.9 #5.6：隐藏 <input type="search"> 的原生清除按钮，只保留上方的自定义 .sclear，
+   避免搜索框同时出现两个「×」（原生 + 自定义）。 */
+.searchview .searchtop input[type='search']::-webkit-search-cancel-button,
+.searchview .searchtop input[type='search']::-webkit-search-decoration{-webkit-appearance:none;display:none;}
 
 /* 播放页竖屏适配 —— v2.3.11 #1：
    旧 .fs-player .fs-* 那一套随播放页重写（.pv-*）早已失去对应 DOM，规则无法匹配任何元素，
@@ -1025,10 +1042,23 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .ld-back{ width:38px; height:38px; flex:none; border:none; background:transparent; color:var(--text); display:flex; align-items:center; justify-content:center; cursor:pointer; position:relative; z-index:1; }
 .ld-back svg{ width:24px; height:24px; flex:none; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
 /* 标题层绝对居中于整条顶栏（左右各留出返回键的安全位），不再受 flex 偏移影响 */
-.ld-head{ position:absolute; left:64px; right:64px; top:0; bottom:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; pointer-events:none; }
+/* v2.4.9 #3.1：修 v2.4.8 #3a 引入的回归 —— 歌名/歌手被状态栏盖住。
+   旧写法 top:0; bottom:0 的绝对定位是从 **padding 盒外边缘**起算的，
+   于是标题相对 .ld-top 的内容整体上移了 (12px + --sat)，正好钻进状态栏。
+   改为与内容同一基线：top = .ld-top 的 padding-top，bottom = padding-bottom。 */
+.ld-head{ position:absolute; left:64px; right:64px; top:calc(12px + var(--sat)); bottom:10px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; pointer-events:none; }
 .ld-title{ font-size:16px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 .ld-sub{ font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
-.ld-scroll{ flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:24px 18px; }
+/* v2.4.9 #3.3：歌词页「短歌词居中 + 长歌词能滚到顶」。
+   旧写法用 justify-content:center —— flex 居中的经典坑：内容溢出容器后，
+   上半部分被推到滚动区之外且永远滚不回来（长歌词顶部几行够不着）。
+   改成上下各一个 flex:1 占位块来撑出居中效果：内容短时两占位各占一半 → 视觉居中；
+   内容长时占位被压到 0 → 从第一行到末行都能正常滚动。 */
+.ld-scroll{ flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; align-items:center; gap:16px; padding:24px 18px; }
+.ld-scroll::before, .ld-scroll::after{ content:''; flex:1 1 0; min-height:12px; }
+/* 当前行自动跟随（JS 侧 scrollIntoView，见 FullScreenPlayer）——滚动行为交给 CSS 控制，
+   避免部分 WebView 上 smooth 与用户手动滑动打架。 */
+.ld-scroll{ scroll-behavior:smooth; }
 .ld-line{ margin:0; font-size:18px; line-height:1.5; color:var(--muted); text-align:center; transition:color .25s, transform .25s, opacity .25s; }
 /* 当前行：粉紫渐变 + 加粗放大；方案 A：inline-block + fit-content 使渐变贴合文字 */
 .ld-line.active{ display:inline-block; width:fit-content; font-size:22px; font-weight:800; color:transparent; background:linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text; background-clip:text; }
@@ -1241,16 +1271,61 @@ body.landscape-on .app::before{ display:none !important; }
    旋转校验空窗里看到的正是底层页。下面两条让横屏立即生效，空窗消失。 */
 body.landscape-on .main.player-open{ display:none !important; }
 body.landscape-on .pv-root{ position:fixed; inset:0; z-index:60; background:var(--bg); }
-/* 横屏内容区：上下只留安全区 + 一点呼吸位，让进度条真正贴近底边 */
+/* ==========================================================================
+   v2.4.9 第 4 部分：横屏模式（#4.1~#4.7）
+   ========================================================================== */
+
+/* #4.1：顶部 52px 死空间消除。
+   旧值 padding-top: calc(52px + var(--sat)) 里的 52px 是写死的，当年为给左上角
+   48px 返回键让位；但返回键此时已是 absolute/fixed 独立图层，不再撑占文档流，
+   于是这 52px 变成纯背景死空间（横屏 --sat 又常为 0，等于凭空多一条带子）。
+   返回键改成 fixed 脱离内容流后，内容区顶部只留 8px 呼吸位。 */
 body.landscape-on .fs-land-content{
-  padding: calc(52px + var(--sat)) calc(28px + var(--sar)) calc(12px + var(--sab)) calc(28px + var(--sal));
+  padding: 8px calc(28px + var(--sar)) calc(8px + var(--sab)) calc(28px + var(--sal));
   justify-content:space-between; gap:10px;
 }
-body.landscape-on .fs-land-head{ margin-top:auto; }
-body.landscape-on .fs-land-bar{ margin-top:auto; }
-/* 横屏返回键：加大到 56px 圈 + 30px 图标（用户反馈"返回按钮要大一点"） */
-body.landscape-on .fs-land-back{ width:48px; height:48px; background:rgba(0,0,0,.42); backdrop-filter:blur(8px); }
-body.landscape-on .fs-land-back svg{ width:30px; height:30px; stroke-width:2.1; }
+/* #4.2：底部呼吸位 12px → 8px（配合 --sab 兜底抬到 28px，贴住手势条又不留空带） */
+
+/* #4.3：进度条不再被歌词挤掉。
+   旧规则只有 .fs-land-lyric 吃 flex:1，head/ctrls/bar 都是默认 flex:0 1 auto
+   但被 space-between + 歌词抢空间后压到容器外，外层 overflow:hidden 直接裁掉，
+   表现为「进度条看不见」。这里显式给非歌词区 flex:none，flex 只留给歌词区。 */
+body.landscape-on .fs-land-head{ flex:none; margin-top:0; }
+body.landscape-on .fs-land-ctrls{ flex:none; }
+body.landscape-on .fs-land-bar{ flex:none; margin-top:6px; }
+body.landscape-on .fs-land-times{ flex:none; }
+
+/* #4.5 + #4.7 + #4.6：控件显示态的歌词区 —— 锁 3 行、可上下滑、当前行高亮、
+   字号上限锁 29px（隐藏态 .ld-solo 是 29px，控件显示时不能超过它，否则隐藏瞬间
+   字会「变小」，观感像跳变）。 */
+body.landscape-on .fs-land-lyric{
+  flex:1 1 auto;
+  min-height:0;
+  max-height:112px;                 /* 3 行 × 24px × 1.4 ≈ 100px，留一点余量 */
+  overflow-y:auto;
+  touch-action:pan-y;               /* 允许纵向滑动，避免被父层的点击/滑动手势吃掉 */
+  -webkit-overflow-scrolling:touch;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:6px; text-align:center;
+}
+body.landscape-on .fs-land-lyric .ld-line{ font-size:24px; line-height:1.4; }
+body.landscape-on .fs-land-lyric .ld-line.active{ font-size:28px; } /* ≤29px 上限 */
+
+/* #4.1（续）：横屏返回键改 fixed 并缩到 44px。
+   fixed 让它彻底脱离 .fs-land-content 的 padding 计算，才可能把顶部压到 8px。 */
+body.landscape-on .fs-land-back{
+  position:fixed;
+  top:calc(8px + var(--sat)); left:calc(12px + var(--sal));
+  z-index:4;
+  width:44px; height:44px;
+  background:rgba(0,0,0,.42); backdrop-filter:blur(8px);
+  transition:opacity .3s;
+}
+body.landscape-on .fs-land-back svg{ width:26px; height:26px; stroke-width:2.1; }
+
+/* #4.4：返回键并入 3 秒自动隐藏（原为常驻）。
+   隐藏后不再拦截点击 —— 点屏幕任意处由 .fs-land 的 onClick 唤回控制区。 */
+body.landscape-on .fs-land.hidden .fs-land-back{ opacity:0; pointer-events:none; }
 /* 横屏层 z-index 78 高于原菜单值 76 —— 菜单已在上方统一抬到 92（见 .fs-menu-mask）。 */
 
 /* #15（原 v2.5.0 #7）：播放页顶栏配色加深。
@@ -1343,9 +1418,41 @@ body.landscape-on .fs-land-back svg{ width:30px; height:30px; stroke-width:2.1; 
   max-width:100%; max-height:100%;
   border-radius:24px; margin:0;
 }
-/* 标题/歌手紧跟封面下方；歌手与进度条之间留呼吸位（用户反馈"紧挨进度条不好看"） */
-.pv-player .pv-title{ margin-top:14px; }
-.pv-player .pv-artist{ margin-top:5px; margin-bottom:40px; }
+/* ==========================================================================
+   v2.4.9 第 5 部分：播放页与交互（#5.2 封面 / #5.3 曲名上移 / #5.4 控件加大）
+   ========================================================================== */
+
+/* #5.3：顶栏中段改为「正在播放 + 曲名 + 歌手」三行信息区。
+   左右各留出 22px 图标位，中间用 min-width:0 保证长歌名能触发省略号而不是把
+   图标挤出屏幕（flex 子项默认 min-width:auto 会被内容撑开）。 */
+.pv-now{
+  flex:1 1 auto; min-width:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:1px; text-align:center;
+}
+.pv-now-title{
+  max-width:100%; font-size:17px; font-weight:800; line-height:1.25; color:var(--text);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.pv-now-sub{
+  max-width:100%; font-size:12px; color:var(--sub, var(--muted)); line-height:1.3;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+/* #5.2：封面再放大。曲名上移后封面下方不再被文字占去约 60px，
+   可用高度变大，这里把上限从 min(78vw,330px) 提到 min(86vw,380px)。 */
+.pv-cover, .pv-lyrics{
+  width:min(86vw, 380px); height:min(86vw, 380px);
+}
+/* 曲名已移到顶栏，封面下方不必再留 40px 呼吸位给歌手行 */
+.pv-player .pv-artist{ margin-bottom:12px; }
+
+/* #5.4：底部控制按钮加大（40 → 48，播放键 56），图标同步放大。
+   按钮变大后 .pv-ctrls 整体变高，进度条自然随之上移，无需额外偏移。 */
+.pv-btn{ width:48px; height:48px; }
+.pv-btn svg{ width:26px; height:26px; }
+.pv-btn.play{ width:56px; height:56px; }
+.pv-btn.play svg{ width:32px; height:32px; }
 
 /* 矮屏（含软键盘弹起、横屏小窗）：等比缩小，保证控制区不被挤出屏幕 */
 @media (max-height: 700px){
@@ -1480,9 +1587,7 @@ body.landscape-on .fs-land{
   background:var(--bg);
 }
 body.landscape-on .fs-land-content{ justify-content:space-between; }
-body.landscape-on .fs-land-lyric{
-  flex:1 1 auto; min-height:0; display:flex;
-  flex-direction:column; align-items:center; justify-content:center;
-}
+/* v2.4.9 #4：横屏歌词区的完整定义已上移到「第 4 部分」段落（含 3 行锁高、
+   可滑动、字号上限 29px），这里不再重复声明，只保留底边微调。 */
 body.landscape-on .fs-land-bar{ margin-bottom:2px; }
 body.landscape-on .fs-land-times{ margin-top:4px; margin-bottom:0; }

@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSources } from '../store';
 import { SubPage } from './SubPage';
 import { AddSourceModal } from './AddSourceModal';
 import { Icon } from './Icon';
-import { SourceConfig } from '../engine';
+import { clearBundleCache, peekBundleSubs, SourceConfig } from '../engine';
 
 // 「仓库管理 / 源列表 / 切换站点」全屏子页：卡片式列表，显示名称 + 截断地址，
 // 操作：[上移][下移][删除][调试]，点击卡片切换启用。
@@ -19,11 +19,36 @@ export function SourceListPage({
   const store = useSources(mediaType);
   const [editTarget, setEditTarget] = useState<SourceConfig | null>(null);
   const [status, setStatus] = useState<Record<string, 'ok' | 'fail' | 'testing'>>({});
+  // v2.4.9：聚合订阅源要显示「N 个子站」，子站列表是异步拉来的（带 30 分钟缓存）。
+  // 这里只在卡片上做展示，拉不到就退回只显示「聚合订阅」，不影响管理操作。
+  const [subs, setSubs] = useState<Record<string, SourceConfig[]>>({});
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const bundles = store.sources.filter((s) => s.type === 'bundle');
+      if (!bundles.length) return;
+      const entries = await Promise.all(
+        bundles.map(async (b) => [b.id, (await peekBundleSubs(b)) ?? []] as const)
+      );
+      if (alive) setSubs(Object.fromEntries(entries));
+    })();
+    return () => { alive = false; };
+  }, [store.sources]);
 
   const runTest = async (cfg: SourceConfig) => {
     setStatus((s) => ({ ...s, [cfg.id]: 'testing' }));
     const ok = await store.test(cfg);
     setStatus((s) => ({ ...s, [cfg.id]: ok ? 'ok' : 'fail' }));
+  };
+
+  /** v2.4.9：刷新订阅 —— 清掉子源缓存并重新拉一次 */
+  const runRefresh = async (cfg: SourceConfig) => {
+    if (!cfg.subUrl) return;
+    setStatus((s) => ({ ...s, [cfg.id]: 'testing' }));
+    clearBundleCache(cfg.subUrl);
+    const list = await peekBundleSubs(cfg);
+    setSubs((s) => ({ ...s, [cfg.id]: list ?? [] }));
+    setStatus((s) => ({ ...s, [cfg.id]: list && list.length ? 'ok' : 'fail' }));
   };
 
   return (
@@ -43,7 +68,11 @@ export function SourceListPage({
               <div className="sc-row-1" onClick={() => store.toggle(s.id)}>
                 <div className="sc-name">
                   {s.name}
-                  {s.subUrl && <span className="sub-badge">订阅</span>}
+                  {s.subUrl && (
+                    <span className="sub-badge">
+                      {s.type === 'bundle' ? `聚合订阅${subs[s.id]?.length ? ` · ${subs[s.id].length} 子站` : ''}` : '订阅'}
+                    </span>
+                  )}
                 </div>
                 <span
                   className={'switch' + (s.enabled ? ' on' : '')}
@@ -64,10 +93,24 @@ export function SourceListPage({
                 <button className="action-chip danger" onClick={() => store.remove(s.id)}>
                   删除
                 </button>
+                {/* v2.4.9：订阅源多一个「刷新」—— 清子源缓存后重拉，改订阅不用删了重加 */}
+                {s.subUrl && (
+                  <button className="action-chip" onClick={() => void runRefresh(s)}>
+                    刷新订阅
+                  </button>
+                )}
                 <button className="action-chip" onClick={() => runTest(s)}>
                   {status[s.id] === 'testing' ? '测…' : status[s.id] === 'ok' ? '通' : status[s.id] === 'fail' ? '不通' : '调试'}
                 </button>
               </div>
+              {/* v2.4.9：聚合订阅展开显示子站名，让用户看得到「1 项里到底有什么」 */}
+              {s.type === 'bundle' && (subs[s.id]?.length ?? 0) > 0 && (
+                <div className="sc-subs">
+                  {subs[s.id].map((sub) => (
+                    <span key={sub.id ?? sub.name} className="sc-sub-chip">{sub.name}</span>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { aggregateSearch, MediaItem, MediaType, SourceConfig } from '../engine';
+import { useEffect, useRef, useState } from 'react';
+import { aggregateSearchCached, MediaItem, MediaType, SourceConfig } from '../engine';
 import { useLibrary } from '../lib/library';
 import { downloadStore } from '../lib/downloads';
 import { Icon } from './Icon';
@@ -20,6 +20,7 @@ export function SearchView({
   enableQueue = true,
   initialQuery,
   onClose,
+  active = true,
 }: {
   sources: SourceConfig[];
   onPlay: (item: MediaItem) => void;
@@ -30,30 +31,59 @@ export function SearchView({
   enableQueue?: boolean;
   initialQuery?: string;
   onClose?: () => void;
+  /**
+   * v2.4.9 #5.1：本搜索页当前是否可见（播放页打开时为 false）。
+   * 用于「从搜索点歌进播放页 → 返回 → 回到原来那条结果」时恢复滚动位置：
+   * 宿主从 display:none 恢复时 scrollTop 会被浏览器重置为 0，需要自己记住。
+   */
+  active?: boolean;
 }) {
   const [kw, setKw] = useState(initialQuery ?? '');
   const [items, setItems] = useState<MediaItem[]>([]);
   const [errors, setErrors] = useState<{ sourceId: string; message: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  // v2.4.9 #1.5.3：搜索请求令牌 —— onPartial 是异步回调，用户可能已经改了关键词
+  // 或重搜，用令牌确保「上一次搜索的迟到增量」不会覆盖当前结果。
+  const runToken = useRef(0);
+
+  // v2.4.9 #5.1：记住搜索结果列表的滚动位置。
+  // 场景：搜「周杰伦」翻到第 40 条 → 点一首进播放页 → 按返回回到搜索页，
+  // 旧实现会回到列表顶部，得重新翻一遍。这里在隐藏前记下 scrollTop，重新可见时还原。
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const savedTop = useRef(0);
+  useEffect(() => {
+    if (active && scrollRef.current) scrollRef.current.scrollTop = savedTop.current;
+  }, [active]);
 
   const showHints = !searched && kw.trim() === '';
 
-  const run = async (q?: string) => {
+  const run = async (q?: string, opts: { force?: boolean } = {}) => {
     const query = (q ?? kw).trim();
     if (!query) return;
+    const token = ++runToken.current;
     setKw(query);
     setLoading(true);
     setSearched(true);
+    setItems([]);
+    setErrors([]);
     library.addSearch(query);
-    // v2.4.1 #A：不再硬编码 timeout。此前写死 8000，会让 aggregateSearch 里
-    // `opts.timeout ?? TIMEOUT_BY_TYPE[s.type]` 的按类型分层永远走不到——
-    // JS/TVBox 源本该拿 25s（高于 Rust 侧 reqwest 20s），实际只有 8s，
-    // 叠加 QuickJS 沙箱初始化 + 每次 fetch 新建 reqwest 客户端 + TLS 握手后
-    // 频频超时，表现为「部分源失败：xxx（搜索失败）」。交由分层超时决定。
-    const r = await aggregateSearch(sources, query, { mediaType });
-    // v2.4.1 #I：给每条结果盖上「产生时的源配置指纹」。
-    // 之后播放时会比对指纹 —— 若期间换过源，则旧直链不再可信，强制用新源重新解析。
+    // v2.4.9 #1.5.3：onPartial —— 谁快谁先上屏，不等最慢的源。
+    // v2.4.9 #1.5.5：走 aggregateSearchCached，同关键词同源 10 分钟内秒回。
+    // v2.4.1 #A：不硬编码 timeout（此前写死 8000 会让按类型分层永远走不到，
+    // JS/TVBox 源本该拿 25s 却只有 8s，频报「部分源失败」）。交由分层超时决定。
+    const r = await aggregateSearchCached(sources, query, {
+      mediaType,
+      force: opts.force,
+      onPartial: (partial) => {
+        if (token !== runToken.current) return; // 已有更新的搜索，丢弃迟到增量
+        // v2.4.1 #I：给每条结果盖上「产生时的源配置指纹」。
+        // 之后播放时会比对指纹 —— 若期间换过源，则旧直链不再可信，强制用新源重新解析。
+        setItems(partial.map((it) => markSourceRev(it, sources)));
+        setLoading(false); // 已经有内容上屏，撤掉转圈，后续增量静默追加
+      },
+    });
+    if (token !== runToken.current) return;
     setItems(r.items.map((it) => markSourceRev(it, sources)));
     setErrors(r.errors);
     setLoading(false);
@@ -94,7 +124,11 @@ export function SearchView({
   }, [onClose, kw]);
 
   return (
-    <div className="view searchview">
+    <div
+      className="view searchview"
+      ref={scrollRef}
+      onScroll={(e) => { if (active) savedTop.current = e.currentTarget.scrollTop; }}
+    >
       <div className="searchtop">
         {onClose && (
           <button className="icon sback" onClick={onClose} aria-label="返回">
@@ -103,8 +137,12 @@ export function SearchView({
         )}
         <div className="sinput">
           <span className="search-ico"><Icon name="search" size={18} /></span>
+          {/* v2.4.9 #5.6：双叉号修复 —— <input type="search"> 在 Chromium / Android
+              WebView 会自动注入原生清除按钮，与右侧自定义 .sclear 功能重复，
+              屏幕上同时出现两个「×」。改用 type="text"（键盘行为由 enterKeyHint /
+              inputMode 保持），并从 DOM 侧根除，CSS 兜底见 styles.css。 */}
           <input
-            type="search"
+            type="text"
             enterKeyHint="search"
             inputMode="search"
             autoCorrect="off"

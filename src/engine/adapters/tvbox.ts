@@ -152,16 +152,19 @@ export function createTvboxSource(cfg: SourceConfig): MediaSource {
       return { url: '' };
     },
 
-    async getDetail(itemId: string) {
+    // v2.4.9 #1.3：参数放宽为 MediaItem | string（与 getLyric / js 适配器同契约），
+    // 便于上层把完整条目透传给子源做封面兜底。
+    async getDetail(itemOrId: MediaItem | string) {
       const srcs = await spiders();
       for (const s of srcs) {
         try {
-          const r = await s.getDetail!(itemId);
+          const r = await s.getDetail!(itemOrId);
           if (r && r.title) return r;
         } catch {
           /* 尝试下一个源 */
         }
       }
+      const itemId = typeof itemOrId === 'string' ? itemOrId : String(itemOrId?.id ?? '');
       return {
         id: itemId,
         sourceId: cfg.id,

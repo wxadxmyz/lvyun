@@ -4,6 +4,7 @@ import { resolvePlay, resolveLyric } from '../player';
 import type { SourceConfig } from '../engine/types';
 import type { useLibrary } from '../lib/library';
 import { useToast } from '../lib/toast';
+import { useSettings } from '../lib/settings';
 
 /**
  * v2.4.4 #0：全局音频宿主 —— 恢复 App 的播放能力。
@@ -39,7 +40,9 @@ export function AudioHost({
 }) {
   const state = usePlayer();
   const toast = useToast();
+  const { settings, update } = useSettings();
   const audioRef = useRef<HTMLAudioElement>(null);
+  const sleepTimerRef = useRef<number | undefined>(undefined);
 
   // 用 ref 持有易变的依赖，避免把它们写进 effect 依赖数组导致频繁重解析。
   // （sources / library 每次渲染都是新对象引用，直接进依赖会每帧重跑播放流程。）
@@ -146,6 +149,46 @@ export function AudioHost({
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = state.muted ? 0 : state.volume;
   }, [state.volume, state.muted]);
+
+  // ── v2.4.9 #5.7：睡眠定时（常驻宿主，不随播放页卸载而丢失）──────────
+  // 分钟模式：到点淡出后暂停；播完本曲模式：当前曲播完即暂停。
+  useEffect(() => {
+    clearTimeout(sleepTimerRef.current);
+    if (settings.sleepEnd) return; // 'end' 模式由下方进度 effect 处理
+    if (!settings.sleepTimer || settings.sleepTimer <= 0) return;
+    const ms = Number(settings.sleepTimer) * 60000;
+    sleepTimerRef.current = window.setTimeout(() => {
+      const a = audioRef.current;
+      if (a) {
+        const target = a.volume;
+        const start = performance.now();
+        const step = () => {
+          const t = (performance.now() - start) / 3000;
+          if (t >= 1) {
+            a.volume = target;
+            player.toggle(); // 播放中 toggle => 暂停
+            update({ sleepTimer: 0, sleepEnd: false });
+            return;
+          }
+          a.volume = target * (1 - t);
+          requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      } else {
+        player.toggle();
+        update({ sleepTimer: 0, sleepEnd: false });
+      }
+    }, ms);
+    return () => clearTimeout(sleepTimerRef.current);
+  }, [settings.sleepTimer, settings.sleepEnd]);
+
+  useEffect(() => {
+    if (settings.sleepEnd && state.isPlaying && state.current && state.duration > 0 && state.progress >= state.duration - 1) {
+      player.toggle();
+      update({ sleepEnd: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.sleepEnd, state.isPlaying, state.progress, state.duration]);
 
   /* ── v2.4.8 #9：前台媒体服务联动 ─────────────────────────────────────
    * 目的：播放期间把进程提升为「前台服务」，避免切后台被系统回收导致音频中断。

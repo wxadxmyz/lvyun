@@ -59,10 +59,8 @@ export function Discover({
     void loadToplists(changed);
   }, [loadToplists, srcKey]);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    void loadToplists(true).finally(() => setRefreshing(false));
-  }, [loadToplists]);
+  // v2.4.9 #5.5：手动刷新入口已移除，onRefresh 随之删除。
+  // 榜单刷新现在只在「首次挂载 + 源集合变化」时自动触发（见下方 useEffect）。
 
   const homeTop = (
     <div className="home-top">
@@ -70,16 +68,11 @@ export function Discover({
       <div className="ht-actions">
         <button className="ht-ico" onClick={onOpenLocal} title="本地音乐"><Icon name="folder" size={22} /></button>
         <button className="ht-ico" onClick={() => onSearch('')} title="搜索"><Icon name="search" size={22} /></button>
-        {/* v2.4.1 #F：手动刷新榜单（force 绕过 12h 缓存，真去网络拉最新） */}
-        <button
-          className={'ht-ico' + (refreshing ? ' spinning' : '')}
-          onClick={onRefresh}
-          disabled={refreshing}
-          title="刷新榜单"
-          aria-label="刷新榜单"
-        >
-          <Icon name="refresh" size={22} />
-        </button>
+        {/* v2.4.9 #5.5：主页刷新按钮已删除（用户拍板）。
+            理由：它只拉榜单（force 绕过 12h 缓存），与音源无关；
+            且它是当初「源不能用了」误判的元凶 —— 用户按了刷新后搜索失败，
+            容易归咎于按钮把源清掉了（见问题调查报告 §2）。
+            榜单本身在「加/删/改源」时会自动强制刷新，无需手动入口。 */}
         <button className="ht-ico" onClick={onOpenHistory} title="历史"><Icon name="clock" size={22} /></button>
         {/* v2.4.6 #12（方案 A）：主页「调试」虫图标已移除。
             新入口 = 设置 → 关于 → 连点版本号 7 次。 */}
@@ -110,7 +103,13 @@ export function Discover({
       {/* v2.4.0 I1：热门榜单 3×3 九宫格，正方形封面，整页上下滑 */}
       {toplists && toplists.length > 0 && (
         <section className="toplist-section">
-          <div className="row-head"><h3>热门榜单</h3></div>
+          <div className="row-head">
+            <h3>热门榜单</h3>
+            {/* v2.4.9 #5.5：刷新按钮删除后，把「正在更新」的可见反馈挪到这里。
+                保持 v2.4.5 #11 的可见加载态（源变化时榜单会强制刷新），
+                只是触发方式从手动按钮变成自动。 */}
+            {refreshing && <span className="muted sm">更新中…</span>}
+          </div>
           <div className="toplist-grid">
             {toplists.map((t) => {
               const [c1, c2] = t.color && t.color.length === 2 ? t.color : ['#ff5e99', '#ff8a4c'];

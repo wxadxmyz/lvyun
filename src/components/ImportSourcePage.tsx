@@ -31,6 +31,34 @@ export function ImportSourcePage({
       setStatus({ type: 'err', msg: '没有可导入的有效源（需包含 type 与 baseUrl/api）' });
       return;
     }
+    // v2.4.9：一个订阅地址里含多个源 → 合并成 **1 条「聚合订阅源」**，
+    // 而不是在源管理里平铺成 N 行。搜索时由 bundle 适配器内部展开成 N 个子站，
+    // 来源 tab 会按子站名分组显示，体验和分别导入完全一致，但管理成本是 1 项。
+    if (subUrl && sources.length > 1) {
+      const text = JSON.stringify([
+        {
+          name: name.trim() || '聚合订阅',
+          type: 'bundle',
+          baseUrl: subUrl,
+          subUrl,
+          enabled: true,
+        },
+      ]);
+      const r = store.importSources(text);
+      if (r.added > 0) {
+        setStatus({
+          type: 'ok',
+          msg: `已作为聚合订阅加入 1 项（内含 ${sources.length} 个子站，搜索时自动展开）`,
+        });
+        setUrl('');
+        setPaste('');
+        onImported?.();
+      } else {
+        setStatus({ type: 'err', msg: r.errors.join('；') || '导入失败' });
+      }
+      return;
+    }
+
     const text = JSON.stringify(
       sources.map((s) => ({
         ...s,

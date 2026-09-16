@@ -29,16 +29,21 @@ export async function resolvePlay(item: MediaItem, sources: SourceConfig[]): Pro
   const revThen = item.raw?.__srcRev as string | undefined;
   const sameSource = revThen === undefined || revThen === revNow;
 
-  if (item.playUrl && sameSource) return item;
+  if (item.playUrl && sameSource) {
+    // 即便直链可用，仍尝试补封面（搜索阶段很多源 cover 为空）
+    return backfillCover(item, cfg);
+  }
   if (!cfg) return item;
 
   try {
-    const { url, headers } = await createSource(cfg).getPlayUrl(item.id);
-    return {
+    const src = createSource(cfg);
+    const { url, headers } = await src.getPlayUrl(item.id);
+    const resolved = {
       ...item,
       playUrl: url,
       raw: { ...item.raw, headers, __srcRev: revNow },
     };
+    return backfillCover(resolved, cfg);
   } catch {
     // v2.4.1 #I：带上可判别的原因，避免一律「获取播放地址失败」让人无从下手
     throw new Error(
@@ -47,6 +52,26 @@ export async function resolvePlay(item: MediaItem, sources: SourceConfig[]): Pro
         : '获取播放地址失败',
     );
   }
+}
+
+/**
+ * v2.4.9 #1.3（方案 A）：封面回填。
+ * 搜索阶段不少源（酷我搜索无封面字段、网易云匿名 picUrl 常空）返回的 cover 为空，
+ * 但其 detail(id) 能取到封面（酷我经 kgCover 走酷狗兜底）。在「播放前」补一次
+ * getDetail 回填 cover，让播放页 / 迷你栏 / 通知栏显示封面。失败静默，不阻断播放。
+ */
+async function backfillCover(item: MediaItem, cfg: SourceConfig | undefined): Promise<MediaItem> {
+  if (item.cover || !cfg) return item;
+  try {
+    const src = createSource(cfg);
+    if (typeof src.getDetail !== 'function') return item;
+    // 传完整 item 而非裸 id：源的 detail 需要歌名+歌手才能兜底封面（见 js.ts 注释）
+    const d = await src.getDetail(item);
+    if (d?.cover) return { ...item, cover: d.cover };
+  } catch {
+    /* 封面兜底失败不影响播放 */
+  }
+  return item;
 }
 
 /**

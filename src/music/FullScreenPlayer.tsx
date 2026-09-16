@@ -5,7 +5,7 @@ import { useSettings } from '../lib/settings';
 import type { useLibrary } from '../lib/library';
 import { SourceConfig, MediaItem } from '../engine/types';
 // v2.4.5 #5：作者页改为真实搜索（此前只在播放队列里筛，所以只有播放过的歌）
-import { aggregateSearch } from '../engine';
+import { aggregateSearch, aggregateArtist } from '../engine';
 import { gradientFor } from '../lib/cover';
 import { Icon } from '../components/Icon';
 // v2.4.6 #7：命令式中文输入弹窗（替代 window.prompt —— Android WebView 的原生
@@ -200,7 +200,8 @@ export function FullScreenPlayer({
   }, [showLandscape]);
 
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
-  const sleepTimer = useRef<number | undefined>(undefined);
+  // v2.4.9 #5.7：sleepTimer ref 已随定时器一起搬到 AudioHost，这里不再保留
+  // （留着只会让人以为定时还挂在本组件上）。
 
   const it = state.current ?? ({ title: '未在播放', artist: '', album: '', id: '', sourceId: '', cover: undefined, lyric: [] } as any);
   const empty = !state.current;
@@ -235,6 +236,32 @@ export function FullScreenPlayer({
     : [];
   const aLine = lyricLines.length ? activeIndex(lyricLines, state.progress) : -1;
 
+  // v2.4.9 #3.2 / #4.7：歌词自动跟随（竖屏全屏歌词页 + 横屏 3 行歌词区共用）。
+  //   1) 用 scrollBy + 差值计算，不用 scrollIntoView —— 后者在部分 WebView 上会
+  //      连带把祖先容器一起滚，横屏时会把整页顶歪。
+  //   2) 用户手动滑动后 1.5s 内不抢滚动权，否则「刚滑上去看两句又被拽回当前行」。
+  const ldScrollRef = useRef<HTMLDivElement>(null);
+  const landLyricRef = useRef<HTMLDivElement>(null);
+  const lyricManualUntil = useRef(0);
+  const markLyricManual = () => { lyricManualUntil.current = Date.now() + 1500; };
+  const onLyricScroll = markLyricManual;
+  const onLandLyricScroll = markLyricManual;
+  useEffect(() => {
+    if (aLine < 0) return;
+    if (Date.now() < lyricManualUntil.current) return;
+    const centerOn = (box: HTMLDivElement | null) => {
+      if (!box) return;
+      const el = box.querySelector('.ld-line.active') as HTMLElement | null;
+      if (!el) return;
+      const boxRect = box.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const delta = elRect.top + elRect.height / 2 - (boxRect.top + boxRect.height / 2);
+      if (Math.abs(delta) > 4) box.scrollBy({ top: delta, behavior: 'smooth' });
+    };
+    centerOn(ldScrollRef.current);
+    centerOn(landLyricRef.current);
+  }, [aLine, coverLyric, showLandscape]);
+
   // 倍速：同步到 <audio> 并记忆
   useEffect(() => {
     const a = getAudioElement();
@@ -246,30 +273,10 @@ export function FullScreenPlayer({
   useEffect(() => { setEqGains(eqGains); }, [eqGains]);
   useEffect(() => subscribeEq(() => setEqGainsLocal(getEqGains())), []);
 
-  // 睡眠定时器：到点淡出后暂停
-  const fadeOutAndPause = () => {
-    const a = getAudioElement();
-    if (!a) { player.toggle(); return; }
-    const target = a.volume;
-    const start = performance.now();
-    const step = () => {
-      const t = (performance.now() - start) / 3000;
-      if (t >= 1) { a.volume = target; player.toggle(); applySleep('off'); return; }
-      a.volume = target * (1 - t);
-      requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  };
-  useEffect(() => {
-    clearTimeout(sleepTimer.current);
-    if (sleepMode === 'off' || sleepMode === 'end') return;
-    sleepTimer.current = window.setTimeout(fadeOutAndPause, Number(sleepMode) * 60000);
-    return () => clearTimeout(sleepTimer.current);
-  }, [sleepMode]);
-  useEffect(() => {
-    if (sleepMode === 'end' && state.duration > 0 && state.progress >= state.duration - 1) fadeOutAndPause();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sleepMode, state.progress, state.duration]);
+  // v2.4.9 #5.7：睡眠定时器逻辑已迁移至 AudioHost（常驻 <audio> 宿主，见 AudioHost.tsx）。
+  // 原因：此前定时器挂在 FullScreenPlayer，退出播放页 / 进入横屏会卸载本组件，
+  // 导致 clearTimeout 把定时清掉，出现「设了 30 分钟却提前停/根本不停」。
+  // 迁移后定时与播放页生命周期解耦，常驻生效。下方 sleepMode / applySleep 仅驱动 UI 展示。
 
   // v2.4.0 H1：横屏进入即启动 3 秒计时；超时淡出 chrome，只剩当前行歌词
   useEffect(() => {
@@ -358,35 +365,67 @@ export function FullScreenPlayer({
     player.seek(p * state.duration);
   };
 
-  // 作者主页：v2.4.5 #5 改为「真的去音源搜一次」。
-  // 旧实现 `state.queue.filter(q => q.artist === it.artist)` 只在当前播放队列里筛，
-  // 没播过的歌根本进不了队列 —— 于是作者页永远只剩「播放过的那几首」。
-  // 现在：按歌手名聚合搜索已启用音源 → 与队列/历史里的同歌手歌曲合并去重。
+  // 作者主页：v2.4.9 #2 数据源由「按歌手名聚合搜索」改为「歌手全曲接口 artist()」。
+  //
+  // 历史：v2.4.5 #5 把「只在播放队列里筛」改成了「真的去音源搜一次」，解决了
+  // 「没播过的歌进不了作者页」。但拿歌手名当关键词去搜，得到的是**搜索结果**
+  // 而不是歌手作品库 —— 内容又少又脏（混翻唱 / live / 别人标注的歌）。
+  // 现在改调 artist()：酷狗 v2 源实测许嵩 256 首、周杰伦 353 首，封面还是 100%。
+  //
+  // 兼容：老式源没有 artist() 时（supported === 0 或结果为空），回退到聚合搜索，
+  // 不至于让作者页变成空白。
   const [artistTracks, setArtistTracks] = useState<MediaItem[]>([]);
   const [artistLoading, setArtistLoading] = useState(false);
+  // v2.4.9 #2.1：作者页取消 50 条硬上限后，热门歌手一次能回 300+ 首。
+  // 全部渲染会明显掉帧，这里做「分页上屏」：首屏 60 条，点「加载更多」每次再 +60。
+  // 顶部「作品」计数仍显示真实总数，不因分页而缩水。
+  const AUTHOR_PAGE_SIZE = 60;
+  const [authorShown, setAuthorShown] = useState(AUTHOR_PAGE_SIZE);
+  useEffect(() => { setAuthorShown(AUTHOR_PAGE_SIZE); }, [it.artist]);
   useEffect(() => {
     if (!showAuthor) return;
     const artist = (it.artist ?? '').trim();
-    if (!artist) { setArtistTracks([]); return; }
+    // v2.4.9 #2.4：只在歌手为空时清空的写法有竞态 —— 切换歌手时依赖数组里
+    // showAuthor / sources 不变，旧歌手的结果会先闪一下才被新结果替换。
+    // 改为 effect 一开始就清空，配合 alive 标志丢弃过期响应。
+    setArtistTracks([]);
+    if (!artist) { setArtistLoading(false); return; }
     let alive = true;
     setArtistLoading(true);
     (async () => {
       try {
         const names = sources.filter((s) => s.enabled).map((s) => ({ id: s.id, name: s.name }));
-        const r = await aggregateSearch(sources, artist, { mediaType: 'music' });
-        if (!alive) return;
         const srcName = (id: string) => names.find((n) => n.id === id)?.name ?? '';
         // 同标题去重（不同源同曲只留一条），队列里的同歌手歌曲排前面
         const fromQueue = state.queue.filter((q) => q.artist === artist);
         const seen = new Set<string>();
         const merged: MediaItem[] = [];
-        for (const q of [...fromQueue, ...r.items]) {
-          const key = `${q.title}|${q.artist ?? ''}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          merged.push({ ...q, sourceName: q.sourceName || srcName(q.sourceId) } as MediaItem);
+        const push = (list: MediaItem[]) => {
+          for (const q of list) {
+            const key = `${q.title}|${q.artist ?? ''}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            merged.push({ ...q, sourceName: q.sourceName || srcName(q.sourceId) } as MediaItem);
+          }
+        };
+
+        // ① 歌手全曲接口（主路径）
+        const a = await aggregateArtist(sources, artist);
+        if (!alive) return;
+        push(fromQueue);
+        push(a.items);
+
+        // ② 源不支持 artist() 或一条都没取到 → 回退按歌手名聚合搜索
+        if (merged.length <= fromQueue.length) {
+          const r = await aggregateSearch(sources, artist, { mediaType: 'music' });
+          if (!alive) return;
+          push(r.items);
         }
-        setArtistTracks(merged.slice(0, 50));
+
+        if (!alive) return;
+        // v2.4.9 #2.1：去掉 50 条硬上限（原先无论源给多少都 slice(0,50)，
+        // 接口能返回 256 首也只显示 50）。改为展示全量，配合列表复用不预渲染全部。
+        setArtistTracks(merged);
       } catch {
         if (alive) setArtistTracks([]);
       } finally {
@@ -426,10 +465,25 @@ export function FullScreenPlayer({
       {/* ===== 主界面：1:1 对齐设计稿 ⑤「未在播放」/ ⑥「播放中」===== */}
       <div className="pv-player">
         {/* 顶栏：汉堡 22px | 正 在 播 放 12px/字距2 | 竖三点 22px */}
+        {/* v2.4.9 #5.3：歌名 / 歌手上移到顶端「正在播放」位置，字号加大。
+            旧布局把歌名放在封面下方，视线要在「封面 → 下方文字 → 底部控件」之间
+            来回跳，且小屏上封面一大就把文字挤到很低（用户反馈"位置偏低"）。
+            现在顶栏中段直接承载曲名（17px 加粗）+ 歌手/专辑（12px），
+            封面下方不再重复显示，封面因此可以吃掉腾出来的高度（#5.2）。 */}
         <div className="pv-top">
           <button className="pv-mi" onClick={() => setShowPlaylist(true)} title="播放列表" aria-label="播放列表">{IC.menu}</button>
-          {/* v2.4.0 C3：顶栏文案按真实播放状态动态显示 */}
-          <span className="pv-ttl">{empty ? '未在播放' : '正在播放'}</span>
+          <div className="pv-now">
+            {/* v2.4.0 C3：顶栏文案按真实播放状态动态显示 */}
+            <span className="pv-ttl">{empty ? '未在播放' : '正在播放'}</span>
+            {!empty && (
+              <>
+                <span className="pv-now-title">{it.title || '未知歌曲'}</span>
+                <span className="pv-now-sub">
+                  {[it.artist, it.album ? `《${it.album}》` : ''].filter(Boolean).join(' · ') || '未知艺术家'}
+                </span>
+              </>
+            )}
+          </div>
           <button className="pv-mi" onClick={() => { setMenuView('main'); setShowMenu(true); }} title="更多" aria-label="更多">{IC.more}</button>
         </div>
 
@@ -460,12 +514,10 @@ export function FullScreenPlayer({
         )}
         </div>
 
-        {/* v2.4.0 C4：封面下方=歌名/歌手显示位；空态留空（「未在播放」已搬到顶栏），
-            .hold 仍撑高度防止控制区跳动 */}
-        <div className="pv-title">{empty ? '' : it.title}</div>
-        <div className={'pv-artist' + (empty ? ' hold' : '')}>
-          {empty ? '' : [it.artist, it.album ? `《${it.album}》` : ''].filter(Boolean).join(' · ') || '未知艺术家'}
-        </div>
+        {/* v2.4.9 #5.3：歌名/歌手已移到顶栏（.pv-now），这里不再重复显示。
+            空态仍保留两行占位，避免控制区在「有歌/没歌」之间上下跳动。 */}
+        {empty && <div className="pv-title" />}
+        {empty && <div className="pv-artist hold">占位</div>}
 
         {/* 控制区贴底：进度条 4px + 时间 + 五个按钮（顺序/尺寸严格照设计稿） */}
         <div className="pv-ctrls">
@@ -537,7 +589,11 @@ export function FullScreenPlayer({
             </div>
           </div>
 
-          <div className="ld-scroll">
+          {/* v2.4.9 #3.2/#4.7：歌词自动跟随当前行。
+              竖屏歌词页与横屏 3 行歌词区共用同一套逻辑 —— 当前行变化时把它滚到
+              容器中间。只在用户没有手动拖动滚动条时跟随（1.5s 内手动滑过就先不抢），
+              否则会出现「你刚滑到上面看两句，它又给你拽回去」。 */}
+          <div className="ld-scroll" ref={ldScrollRef} onScroll={onLyricScroll}>
             {lyricLines.length ? (
               lyricLines.map((l, i) => (
                 <p key={i} className={'ld-line' + (i === aLine ? ' active' : '') + (i < aLine ? ' past' : '')}>{l.text || '·'}</p>
@@ -686,8 +742,8 @@ export function FullScreenPlayer({
           </div>
           <div className="fs-author-sec">热门作品</div>
           <div className="fs-author-tracks">
-            {artistLoading && <div className="muted sm" style={{ padding: 16, textAlign: 'center' }}>正在搜索「{it.artist}」的作品…</div>}
-            {!artistLoading && artistTracks.map((q, i) => (
+            {artistLoading && <div className="muted sm" style={{ padding: 16, textAlign: 'center' }}>正在获取「{it.artist}」的作品…</div>}
+            {!artistLoading && artistTracks.slice(0, authorShown).map((q, i) => (
               // v2.4.5 #5：点哪首播哪首（旧实现无论点哪首都播 state.index 那首）
               <div key={i} className="fs-author-track" onClick={() => { setShowAuthor(false); player.playQueue(artistTracks, i); }}>
                 <span className="at-idx">{i + 1}</span>
@@ -695,9 +751,14 @@ export function FullScreenPlayer({
                 <span className="at-meta"><span className="at-name">{q.title}</span><span className="at-sub">{[q.artist, q.sourceName].filter(Boolean).join(' · ')}</span></span>
               </div>
             ))}
+            {!artistLoading && artistTracks.length > authorShown && (
+              <button className="link" style={{ padding: '12px 16px', alignSelf: 'center' }} onClick={() => setAuthorShown((n) => n + AUTHOR_PAGE_SIZE)}>
+                加载更多（还有 {artistTracks.length - authorShown} 首）
+              </button>
+            )}
             {!artistLoading && artistTracks.length === 0 && (
               <div className="muted sm" style={{ padding: 16, textAlign: 'center' }}>
-                {it.artist ? `没有搜到「${it.artist}」的作品，可能是该源不支持按作者搜索。` : '当前歌曲没有歌手信息。'}
+                {it.artist ? `没有获取到「${it.artist}」的作品，可能是该源不支持歌手全曲接口。` : '当前歌曲没有歌手信息。'}
               </div>
             )}
           </div>
@@ -724,7 +785,7 @@ export function FullScreenPlayer({
               <div className="fs-land-title">{it.title || '未在播放'}</div>
               <div className="fs-land-sub">{[it.artist, it.album ? `《${it.album}》` : ''].filter(Boolean).join(' · ') || '未知艺术家'}</div>
             </div>
-            <div className="fs-land-lyric">
+            <div className="fs-land-lyric" ref={landLyricRef} onScroll={onLandLyricScroll}>
               {lyricLines.length ? (
                 lyricLines.map((l, i) => (
                   <p key={i} className={'ld-line' + (i === aLine ? ' active' : '') + (i < aLine ? ' past' : '')}>{l.text || '·'}</p>

@@ -288,6 +288,8 @@ export default function MusicApp() {
 
         {searchOpen && (
           <div className="fullpage">
+            {/* v2.4.9 #5.1：播放页打开时搜索页被盖住（不可见），
+                传 active 让 SearchView 在返回时恢复原来的滚动位置 */}
             <SearchView
               onClose={() => setSearchOpen(false)}
               sources={store.sources}
@@ -297,6 +299,7 @@ export default function MusicApp() {
               mediaType="music"
               placeholder="搜索歌曲 / 歌手 / 专辑…"
               initialQuery={searchQuery}
+              active={tab !== 'player'}
             />
           </div>
         )}
