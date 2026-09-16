@@ -144,6 +144,17 @@ export function createJsSource(cfg: SourceConfig): MediaSource {
       album: v.album ?? '',
       cover: v.pic ?? v.cover ?? v.vod_pic ?? '',
       mediaType: 'music' as const,
+      // v2.5.0 #6-3：透出付费/试听/原唱字段。spider 可能用不同命名，
+      // 这里做容错读取（vip/trial/original 优先，其次各源历史字段）。
+      vip: !!(
+        v.vip ??
+        v.pay ??
+        v.payFlag ??
+        (typeof v.fee === 'number' && v.fee !== 0 && v.fee !== 8) ??
+        false
+      ),
+      trial: !!(v.trial ?? v.freeTrial ?? (v.fee === 8)),
+      original: !!(v.original ?? v.isoriginal ?? false),
       raw: v,
     }));
   }

@@ -50,6 +50,12 @@ export interface MediaItem {
   cover?: string;
   year?: string;
   duration?: number;
+  /** v2.5.0：付费/VIP 歌曲（源真实返回时才有） */
+  vip?: boolean;
+  /** v2.5.0：免费试听（如网易云 fee===8，仅试听 30 秒） */
+  trial?: boolean;
+  /** v2.5.0：原唱（源真实返回 isoriginal 等字段时才有，无标准字段的源不标） */
+  original?: boolean;
   mediaType: MediaType;
   playUrl?: string;
   episodes?: Episode[];

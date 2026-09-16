@@ -1710,3 +1710,40 @@ body.landscape-on .fs-land-content{ justify-content:space-between; }
    可滑动、字号上限 29px），这里不再重复声明，只保留底边微调。 */
 body.landscape-on .fs-land-bar{ margin-bottom:2px; }
 body.landscape-on .fs-land-times{ margin-top:4px; margin-bottom:0; }
+
+/* ============================================================
+ * v2.5.0 #6-1：搜索结果行「裸图标」按钮（红心 + 三点，无底色圆圈）
+ * ============================================================ */
+.searchview .track-row .tactions{ flex:0 0 auto; gap:8px; }
+.searchview .track-row .tactions .ico{
+  width:30px; height:30px; padding:0; border:none; background:transparent; border-radius:50%;
+  display:grid; place-items:center; color:var(--muted); cursor:pointer; transition:.12s;
+}
+.searchview .track-row .tactions .ico:hover{ color:var(--text); }
+.searchview .track-row .tactions .ico.on{ color:var(--danger); }      /* 已喜欢：红心 */
+.searchview .track-row .tactions .ico.on svg{ fill:var(--danger); }
+
+/* ============================================================
+ * v2.5.0 #6-3：三色付费 / 试听 / 原唱角标（配色自定，不抄参考图深绿块）
+ * ============================================================ */
+.tag{ display:inline-flex; align-items:center; margin-left:6px; padding:1px 6px; border-radius:6px;
+  font-size:10px; font-weight:700; line-height:1.5; vertical-align:middle; white-space:nowrap; }
+.tag-vip{ color:#7a4e00; background:rgba(232,182,76,.18); border:1px solid rgba(232,182,76,.5); }   /* 琥珀金 */
+.tag-trial{ color:#8a4a14; background:rgba(240,153,74,.16); border:1px solid rgba(240,153,74,.5); }  /* 暖橙 */
+.tag-orig{ color:#1f7a5e; background:rgba(79,209,165,.16); border:1px solid rgba(79,209,165,.5); }   /* 青绿 */
+
+/* ============================================================
+ * v2.5.0 #6-2：搜索结果行「⋮」底部列表浮层补充样式
+ * ============================================================ */
+.search-track-menu .fs-sheet-head .sh-title{ display:flex; flex-direction:column; gap:2px; }
+.search-track-menu .stm-title{ font-size:15px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.search-track-menu .stm-sub{ font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.search-track-menu .stm-back{ width:34px; height:34px; border:none; background:transparent; color:var(--text);
+  display:grid; place-items:center; border-radius:50%; cursor:pointer; flex:0 0 auto; }
+.search-track-menu .stm-back:hover{ background:var(--panel2); }
+.search-track-menu .fs-sheet-head .icon img,
+.search-track-menu .fs-sheet-head .icon span{ width:100%; height:100%; border-radius:50%; object-fit:cover; }
+.search-track-menu .fs-sheet-head .icon span{ display:grid; place-items:center; font-size:15px; color:#fff; }
+.search-track-menu .stm-artist-list{ display:flex; flex-direction:column; gap:2px; }
+.search-track-menu .stm-artist-list .track-row{ background:transparent; }
+.search-track-menu .stm-artist-list .track-row:hover{ background:var(--panel2); }

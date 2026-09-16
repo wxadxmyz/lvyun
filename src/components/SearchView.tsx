@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { aggregateSearchCached, MediaItem, MediaType, SourceConfig } from '../engine';
 import { useLibrary } from '../lib/library';
 import { downloadStore } from '../lib/downloads';
+import { player } from '../lib/playerStore';
 import { Icon } from './Icon';
+import { SearchTrackMenu } from './SearchTrackMenu';
 // v2.4.5 #9：紧凑列表用封面色块占位
 import { gradientFor, initial } from '../lib/cover';
 // v2.3.11 #4：返回键栈式调度
@@ -50,6 +52,9 @@ export function SearchView({
   // v2.4.9 #1.5.3：搜索请求令牌 —— onPartial 是异步回调，用户可能已经改了关键词
   // 或重搜，用令牌确保「上一次搜索的迟到增量」不会覆盖当前结果。
   const runToken = useRef(0);
+
+  // v2.5.0 #6-2：当前打开「⋮」浮层的那一行（null = 浮层关闭）
+  const [menuItem, setMenuItem] = useState<MediaItem | null>(null);
 
   // v2.4.9 #5.1：记住搜索结果列表的滚动位置。
   // 场景：搜「周杰伦」翻到第 40 条 → 点一首进播放页 → 按返回回到搜索页，
@@ -273,27 +278,48 @@ export function SearchView({
                 {/* v2.4.6 #2：来源改为行内小角标（设计稿 .rw-src），
                     不再用独立的 .tsrc 列 —— 那一列会吃掉标题可用宽度，长歌名被截断。 */}
                 <span className="tsrc-inline">{it.sourceName}</span>
+                {/* v2.5.0 #6-3：三色付费角标（VIP / 试听 / 原唱），仅字段为真时显示 */}
+                {it.vip && <span className="tag tag-vip">VIP</span>}
+                {it.trial && <span className="tag tag-trial">试听</span>}
+                {it.original && <span className="tag tag-orig">原唱</span>}
               </span>
             </span>
             <span className="tactions" onClick={(e) => e.stopPropagation()}>
-              <button className="mini" title="播放" onClick={() => onPlay(it)}><Icon name="play" size={16} /></button>
-              {enableQueue && onQueue && (
-                <button className="mini" title="加入队列" onClick={() => onQueue([it])}><Icon name="plus" size={15} /></button>
-              )}
+              {/* v2.5.0 #6-1：去掉播放/加入队列按钮（整行点击即播放）；
+                  只留裸红心(喜欢) + 三点，无底色圆圈。 */}
               <button
-                className={'mini' + (library.isFavorite(it) ? ' fav' : '')}
-                title="收藏"
+                className={'ico' + (library.isFavorite(it) ? ' on' : '')}
+                title="喜欢"
+                aria-label="喜欢"
                 onClick={() => library.toggleFavorite(it)}
               >
-                <Icon name={library.isFavorite(it) ? 'heart-filled' : 'heart'} size={15} />
+                <Icon name={library.isFavorite(it) ? 'heart-filled' : 'heart'} size={20} />
               </button>
-              <button className="mini" title="下载" onClick={() => downloadStore.start(it)}><Icon name="download" size={15} /></button>
+              <button
+                className="ico"
+                title="更多"
+                aria-label="更多"
+                onClick={() => setMenuItem(it)}
+              >
+                <Icon name="more-vertical" size={20} />
+              </button>
             </span>
           </div>
         ))}
       </div>
 
       {searched && !loading && items.length === 0 && <div className="empty">没有找到结果，换个关键词或检查音源。</div>}
+
+      {/* v2.5.0 #6-2：搜索结果行「⋮」浮层 */}
+      {menuItem && (
+        <SearchTrackMenu
+          item={menuItem}
+          sources={sources}
+          library={library}
+          onPlay={onPlay}
+          onClose={() => setMenuItem(null)}
+        />
+      )}
     </div>
   );
 }

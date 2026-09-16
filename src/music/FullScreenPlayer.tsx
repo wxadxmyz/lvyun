@@ -16,6 +16,7 @@ import { useToast } from '../lib/toast';
 import { pushBackHandler } from '../lib/backStack';
 // v2.4.2 #E：横屏真旋转（等桥 / 校验 / 代际 token / 失败不切 UI）
 import { requestOrientation } from '../lib/orientation';
+import { setStatusBarVisible } from '../lib/navBar';
 
 const MODE_ICON: Record<string, { icon: 'repeat' | 'repeat-one' | 'shuffle'; label: string }> = {
   list: { icon: 'repeat', label: '列表循环' },
@@ -304,13 +305,21 @@ export function FullScreenPlayer({
   const ldScrollRef = useRef<HTMLDivElement>(null);
   const landLyricRef = useRef<HTMLDivElement>(null);
   const lyricManualUntil = useRef(0);
+  // v2.5.0 #1：歌词页「首次挂载」用瞬时居中，之后才平滑跟随。
+  // 否则点开歌词页（scrollTop=0、当前行在视口下方）会被 smooth 从底部滚上来。
+  const firstCenterRef = useRef(true);
   const markLyricManual = () => { lyricManualUntil.current = Date.now() + 1500; };
   // v2.4.10 #4：只有真实的手势 / 滚轮才算「用户操作」，程序滚动不算。
   const onLyricTouch = markLyricManual;
   const onLyricWheel = markLyricManual;
+  // v2.5.0 #1：打开竖屏歌词页 / 进入横屏时，重新武装「首次瞬时居中」。
+  useEffect(() => {
+    if (coverLyric || showLandscape) firstCenterRef.current = true;
+  }, [coverLyric, showLandscape]);
   useEffect(() => {
     if (aLine < 0) return;
-    if (Date.now() < lyricManualUntil.current) return;
+    if (Date.now() < lyricManualUntil.current) { firstCenterRef.current = false; return; }
+    const first = firstCenterRef.current;
     const centerOn = (box: HTMLDivElement | null) => {
       if (!box) return;
       const el = box.querySelector('.ld-line.active') as HTMLElement | null;
@@ -329,10 +338,13 @@ export function FullScreenPlayer({
       const max = box.scrollHeight - box.clientHeight;
       const next = Math.max(0, Math.min(max, want));
       if (!Number.isFinite(next) || Math.abs(next - box.scrollTop) < 1) return;
-      box.scrollTo({ top: next, behavior: 'smooth' });
+      // v2.5.0 #1：首次（刚打开歌词页/刚进横屏）用瞬时定位，直接居中；
+      //   之后（播放中逐行跟随）才平滑滚动 —— 即「从顶部开始、高亮到中间锁定」。
+      box.scrollTo({ top: next, behavior: first ? 'auto' : 'smooth' });
     };
     centerOn(ldScrollRef.current);
     centerOn(landLyricRef.current);
+    firstCenterRef.current = false;
   }, [aLine, coverLyric, showLandscape]);
 
   // 倍速：同步到 <audio> 并记忆
@@ -354,7 +366,9 @@ export function FullScreenPlayer({
   // v2.4.0 H1：横屏进入即启动 3 秒计时；超时淡出 chrome，只剩当前行歌词
   useEffect(() => {
     clearTimeout(landTimer.current);
-    if (!showLandscape) { setLandHidden(false); return; }
+    if (!showLandscape) { setLandHidden(false); setStatusBarVisible(true); return; }
+    // v2.5.0 #2/#4：横屏进入即隐藏整条状态栏（点屏幕显控件时再显示）。
+    setStatusBarVisible(false);
     landTimer.current = window.setTimeout(() => setLandHidden(true), 3000);
     return () => clearTimeout(landTimer.current);
   }, [showLandscape]);
@@ -422,6 +436,8 @@ export function FullScreenPlayer({
       const nh = !h;
       clearTimeout(landTimer.current);
       if (!nh) landTimer.current = window.setTimeout(() => setLandHidden(true), 3000);
+      // v2.5.0 #4：控件隐藏(nh=true) → 隐藏状态栏；控件显示(nh=false) → 显示状态栏
+      setStatusBarVisible(!nh);
       return nh;
     });
   };

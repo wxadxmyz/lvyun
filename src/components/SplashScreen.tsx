@@ -1,20 +1,36 @@
 import { useEffect, useState } from 'react';
+import { setSplashBars, syncNavBarNow } from '../lib/navBar';
 
 type Props = {
   appName: string;
   iconSrc: string;
   gradient: string;
   duration?: number;
+  /** v2.5.0 #7：启动页两端色（顶部粉 / 底部深紫），让状态栏与手势栏与渐变同色消失 */
+  barColors?: { top: string; bottom: string };
 };
 
-export default function SplashScreen({ appName, iconSrc, gradient, duration = 1600 }: Props) {
+export default function SplashScreen({
+  appName,
+  iconSrc,
+  gradient,
+  duration = 1600,
+  barColors = { top: '#FF7AB6', bottom: '#3A1E5C' },
+}: Props) {
   const [closing, setClosing] = useState(false);
   const [gone, setGone] = useState(false);
 
   useEffect(() => {
+    // v2.5.0 #7：启动页要把系统状态栏 / 手势栏染成渐变两端色，避免白块。
+    setSplashBars(barColors.top, barColors.bottom);
     const t = setTimeout(() => setClosing(true), duration);
     return () => clearTimeout(t);
-  }, [duration]);
+  }, [duration, barColors.top, barColors.bottom]);
+
+  // v2.5.0 #7：启动页消失后，恢复成应用主题色（navBar.ts 的 MutationObserver 也兜底）。
+  useEffect(() => {
+    if (gone) syncNavBarNow();
+  }, [gone]);
 
   if (gone) return null;
 

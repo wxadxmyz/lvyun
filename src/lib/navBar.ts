@@ -29,22 +29,44 @@ function readBg(): string {
   return DEFAULT_BG;
 }
 
+/**
+ * v2.5.0 #5：判断背景是不是「浅色」，决定系统栏图标用深还是浅。
+ * 浅色背景（如简洁白 #f4f5f9）→ 需要深色图标（lightIcons=true）；
+ * 深色背景 → 浅色图标（lightIcons=false）。
+ */
+function isLightColor(hex: string): boolean {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex);
+  if (!m) {
+    const s = /^#([0-9a-fA-F]{3})$/.exec(hex);
+    if (!s) return false;
+    const r = parseInt(s[1][0] + s[1][0], 16);
+    const g = parseInt(s[1][1] + s[1][1], 16);
+    const b = parseInt(s[1][2] + s[1][2], 16);
+    return (r * 299 + g * 587 + b * 114) / 1000 > 170;
+  }
+  const r = parseInt(m[1].slice(0, 2), 16);
+  const g = parseInt(m[1].slice(2, 4), 16);
+  const b = parseInt(m[1].slice(4, 6), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 > 170;
+}
+
 function push(): boolean {
   try {
     const bridge = (window as any).LvYunAndroid;
     if (!bridge) return false;
     const bg = readBg();
+    const light = isLightColor(bg); // 浅色背景 → 深色图标
     // v2.4.5 #12：播放页「通知栏 → 手势栏一色」。
-    // 旧实现只调 setNavBarColor —— 顶部状态栏从来没被染过，视觉必然割裂。
-    // 优先用一次 setBarsColor 同时设两根条（避免两次 IPC、两帧不同色）；
-    // 老版本桥没有这个方法时，退回分别调用，再退回只染导航栏。
+    // 优先用一次 setBarsColor 同时设两根条（避免两次 IPC、两帧不同色）。
+    // v2.5.0 #5：lightIcons 不再写死 false，而是按背景明暗算 —— 浅色主题下
+    //   状态栏/手势栏图标也能看清（旧实现浅色主题下图标是浅色，白底上看不见）。
     if (typeof bridge.setBarsColor === 'function') {
-      bridge.setBarsColor(bg, false);
+      bridge.setBarsColor(bg, light);
       return true;
     }
     let ok = false;
-    if (typeof bridge.setNavBarColor === 'function') { bridge.setNavBarColor(bg, false); ok = true; }
-    if (typeof bridge.setStatusBarColor === 'function') { bridge.setStatusBarColor(bg, false); ok = true; }
+    if (typeof bridge.setNavBarColor === 'function') { bridge.setNavBarColor(bg, light); ok = true; }
+    if (typeof bridge.setStatusBarColor === 'function') { bridge.setStatusBarColor(bg, light); ok = true; }
     return ok;
   } catch {
     return false;
@@ -95,4 +117,35 @@ export function installNavBarSync(): void {
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) schedule();
   });
+}
+
+/**
+ * v2.5.0 #2/#4：横屏隐藏 / 显示系统状态栏。
+ * 横屏播放时整条状态栏隐藏；点屏幕显控件时再显示，控件隐藏时再隐藏。
+ * 仅 Android 桥有效，其它环境（桌面/浏览器）直接忽略。
+ */
+export function setStatusBarVisible(visible: boolean): void {
+  try {
+    const bridge = (window as any).LvYunAndroid;
+    if (bridge && typeof bridge.setStatusBarVisible === 'function') {
+      bridge.setStatusBarVisible(visible);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * v2.5.0 #7：启动页把状态栏 / 手势栏染成启动渐变的两端色（顶部粉、底部深紫），
+ * 让两条系统栏与渐变同色「消失」。仅 Android 有效。
+ */
+export function setSplashBars(statusColor: string, navColor: string): void {
+  try {
+    const bridge = (window as any).LvYunAndroid;
+    if (!bridge) return;
+    if (typeof bridge.setStatusBarColor === 'function') bridge.setStatusBarColor(statusColor, false);
+    if (typeof bridge.setNavBarColor === 'function') bridge.setNavBarColor(navColor, false);
+  } catch {
+    /* ignore */
+  }
 }

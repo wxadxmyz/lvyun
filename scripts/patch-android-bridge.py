@@ -75,6 +75,7 @@ STATUS_BLOCK = '''
                     else decor.systemUiVisibility and flag.inv()
             }
         } catch (e: Exception) { /* ignore */ }
+        _lvApplyAppearance()
     }
 '''
 
@@ -173,6 +174,21 @@ FULL_BLOCK = '''
                     else decor.systemUiVisibility and flag.inv()
             }
         } catch (e: Exception) { /* ignore */ }
+        _lvApplyAppearance()
+    }
+    // v2.5.0 #5：API30+ 用 WindowInsetsController.setSystemBarsAppearance 控制
+    // 状态栏 / 导航栏图标的明暗。navigationBarColor 与 SYSTEM_UI_FLAG_LIGHT_*
+    // 在 API35+ 已废弃，旧写法在新系统上失效，图标会看不清。
+    fun _lvApplyAppearance() {
+        if (android.os.Build.VERSION.SDK_INT < 30) return
+        try {
+            val insets = window?.insetsController ?: return
+            val lightStatus = if (_lvStatusLight) android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS else 0
+            val lightNav = if (_lvNavLight) android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS else 0
+            val mask = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+            insets.setSystemBarsAppearance(lightStatus or lightNav, mask)
+        } catch (e: Exception) { /* ignore */ }
     }
     val LvYunAndroid = object {
         @android.webkit.JavascriptInterface
@@ -220,6 +236,27 @@ FULL_BLOCK = '''
                     val c = android.graphics.Color.parseColor(color)
                     _lvNavColor = c; _lvNavLight = lightIcons; _lvApplyNavBar()
                     _lvStatusColor = c; _lvStatusLight = lightIcons; _lvApplyStatusBar()
+                } catch (e: Exception) { /* ignore */ }
+            }
+        }
+        // v2.5.0 #2/#4：横屏隐藏 / 显示系统状态栏。
+        // API30+ 走 WindowInsetsController.hide/show(statusBars)；旧系统退回 SYSTEM_UI_FLAG_FULLSCREEN。
+        @android.webkit.JavascriptInterface
+        fun setStatusBarVisible(visible: Boolean) {
+            runOnUiThread {
+                try {
+                    val win = window ?: return@runOnUiThread
+                    if (android.os.Build.VERSION.SDK_INT >= 30) {
+                        val insets = win.insetsController
+                        if (visible) insets.show(android.view.WindowInsets.Type.statusBars())
+                        else insets.hide(android.view.WindowInsets.Type.statusBars())
+                    } else {
+                        val decor = win.decorView
+                        val flag = android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+                        decor.systemUiVisibility =
+                            if (visible) decor.systemUiVisibility and flag.inv()
+                            else decor.systemUiVisibility or flag
+                    }
                 } catch (e: Exception) { /* ignore */ }
             }
         }
