@@ -274,14 +274,15 @@ export function SearchView({
             <span className="tmain">
               <span className="ttitle">{it.title}</span>
               <span className="tsub">
+                {/* v2.5.1 #2：三色付费角标（VIP / 试听 / 原唱）移到副标题「最前」，
+                    即来源之前，与 UI 方案一致（v2.5.0 误放到了末尾）。仅字段为真时显示。 */}
+                {it.vip && <span className="tag tag-vip">VIP</span>}
+                {it.trial && <span className="tag tag-trial">试听</span>}
+                {it.original && <span className="tag tag-orig">原唱</span>}
                 {[it.artist, it.album, it.year].filter(Boolean).join(' · ') || '未知'}
                 {/* v2.4.6 #2：来源改为行内小角标（设计稿 .rw-src），
                     不再用独立的 .tsrc 列 —— 那一列会吃掉标题可用宽度，长歌名被截断。 */}
                 <span className="tsrc-inline">{it.sourceName}</span>
-                {/* v2.5.0 #6-3：三色付费角标（VIP / 试听 / 原唱），仅字段为真时显示 */}
-                {it.vip && <span className="tag tag-vip">VIP</span>}
-                {it.trial && <span className="tag tag-trial">试听</span>}
-                {it.original && <span className="tag tag-orig">原唱</span>}
               </span>
             </span>
             <span className="tactions" onClick={(e) => e.stopPropagation()}>

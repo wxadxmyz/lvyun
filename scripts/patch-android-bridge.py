@@ -160,12 +160,29 @@ FULL_BLOCK = '''
     }
     var _lvNavColor: Int? = null
     var _lvNavLight: Boolean = false
+    // v2.5.1 #1/#5：返回「背景是否偏浅」，供系统栏图标明暗判断复用
+    // （与前端 navBar.ts isLightColor 同算法：YIQ > 170 视为浅色）。
+    private fun _lvIsLightColor(hex: String): Boolean {
+        val h = hex.trim().removePrefix("#")
+        val r: Int; val g: Int; val b: Int
+        when (h.length) {
+            3 -> { r = h[0].toString().repeat(2).toInt(16); g = h[1].toString().repeat(2).toInt(16); b = h[2].toString().repeat(2).toInt(16) }
+            6 -> { r = h.substring(0, 2).toInt(16); g = h.substring(2, 4).toInt(16); b = h.substring(4, 6).toInt(16) }
+            else -> return false
+        }
+        return (r * 299 + g * 587 + b * 114) / 1000 > 170
+    }
     fun _lvApplyNavBar() {
         val c = _lvNavColor ?: return
         try {
             window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
             window.navigationBarColor = c
+            // v2.5.1 #1/#5：关掉 Android 15+ 默认的手势栏对比度强制白罩，
+            // 否则即使把条设透明/深底，系统仍会在底部叠一层浅色 scrim → 看着还是白。
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                window.isNavigationBarContrastEnforced = false
+            }
             if (android.os.Build.VERSION.SDK_INT >= 26) {
                 val decor = window.decorView
                 val flag = android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
@@ -236,6 +253,50 @@ FULL_BLOCK = '''
                     val c = android.graphics.Color.parseColor(color)
                     _lvNavColor = c; _lvNavLight = lightIcons; _lvApplyNavBar()
                     _lvStatusColor = c; _lvStatusLight = lightIcons; _lvApplyStatusBar()
+                } catch (e: Exception) { /* ignore */ }
+            }
+        }
+        // v2.5.1 #1：启动页让两条系统栏「透明」，下方粉紫渐变 WebView 直接透出 →
+        // 顶/底与渐变同色「消失」，而不是白块。透明在各 Android 版本都生效，
+        // 绕开 API35+ 忽略 navigationBarColor / statusBarColor 的问题。
+        // 同时关掉底部对比度白罩（isNavigationBarContrastEnforced=false），
+        // 并按顶/底色明暗分别给定状态栏 / 导航栏图标明暗。
+        @android.webkit.JavascriptInterface
+        fun setSplashBars(topColor: String, bottomColor: String) {
+            runOnUiThread {
+                try {
+                    window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
+                    window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+                    window.statusBarColor = android.graphics.Color.TRANSPARENT
+                    window.navigationBarColor = android.graphics.Color.TRANSPARENT
+                    if (android.os.Build.VERSION.SDK_INT >= 29) {
+                        window.isNavigationBarContrastEnforced = false
+                    }
+                    _lvStatusLight = _lvIsLightColor(topColor)
+                    _lvNavLight = _lvIsLightColor(bottomColor)
+                    _lvApplyStatusBar()
+                    _lvApplyNavBar()
+                } catch (e: Exception) { /* ignore */ }
+            }
+        }
+        // v2.5.1 #5：横屏让两条系统栏透明，播放器深底渐变透出 →
+        // 通知栏 + 手势栏底色 = 播放器背景色（哪怕点开控件也同色）。
+        // 深底 → 浅(白)图标（_lvStatusLight/_lvNavLight = false）。
+        @android.webkit.JavascriptInterface
+        fun setLandscapeBars() {
+            runOnUiThread {
+                try {
+                    window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
+                    window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+                    window.statusBarColor = android.graphics.Color.TRANSPARENT
+                    window.navigationBarColor = android.graphics.Color.TRANSPARENT
+                    if (android.os.Build.VERSION.SDK_INT >= 29) {
+                        window.isNavigationBarContrastEnforced = false
+                    }
+                    _lvStatusLight = false
+                    _lvNavLight = false
+                    _lvApplyStatusBar()
+                    _lvApplyNavBar()
                 } catch (e: Exception) { /* ignore */ }
             }
         }

@@ -136,15 +136,45 @@ export function setStatusBarVisible(visible: boolean): void {
 }
 
 /**
- * v2.5.0 #7：启动页把状态栏 / 手势栏染成启动渐变的两端色（顶部粉、底部深紫），
- * 让两条系统栏与渐变同色「消失」。仅 Android 有效。
+ * v2.5.1 #1：启动页把两条系统栏设「透明」，渐变 WebView 透出 → 顶/底与渐变同色。
+ * 桥 LvYunAndroid 是首帧异步绑定的，启动页挂载时大概率还没挂上；
+ * 这里按 RETRIES 节奏重试到桥就绪再推，否则 setSplashBars 直接空跑、整段启动页白条。
+ * 仅 Android 有效。
  */
 export function setSplashBars(statusColor: string, navColor: string): void {
+  let i = 0;
+  const step = () => {
+    try {
+      const bridge = (window as any).LvYunAndroid;
+      if (!bridge) { retry(); return; }
+      if (typeof bridge.setSplashBars === 'function') {
+        bridge.setSplashBars(statusColor, navColor);
+        return;
+      }
+      // 老桥兜底：没有 setSplashBars 时退回旧接口各染一根
+      if (typeof bridge.setStatusBarColor === 'function') bridge.setStatusBarColor(statusColor, false);
+      if (typeof bridge.setNavBarColor === 'function') bridge.setNavBarColor(navColor, false);
+      return;
+    } catch {
+      retry();
+    }
+  };
+  const retry = () => {
+    if (i >= RETRIES.length) return;
+    const d = RETRIES[i++];
+    window.setTimeout(step, d);
+  };
+  retry(); // 首次立即执行（RETRIES[0] = 0）
+}
+
+/**
+ * v2.5.1 #5：横屏让两条系统栏透明，播放器深底透出 → 通知栏/手势栏 = 播放器背景色。
+ * 无论控件显隐都调一次，保证点开控件时也不会退回白条。仅 Android 有效。
+ */
+export function setLandscapeBars(): void {
   try {
     const bridge = (window as any).LvYunAndroid;
-    if (!bridge) return;
-    if (typeof bridge.setStatusBarColor === 'function') bridge.setStatusBarColor(statusColor, false);
-    if (typeof bridge.setNavBarColor === 'function') bridge.setNavBarColor(navColor, false);
+    if (bridge && typeof bridge.setLandscapeBars === 'function') bridge.setLandscapeBars();
   } catch {
     /* ignore */
   }

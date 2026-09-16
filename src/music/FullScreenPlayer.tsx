@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
 import { usePlayer, fmtTime, player, getAudioElement } from '../lib/playerStore';
 import { getEqGains, setEqGains, subscribeEq, EQ_PRESETS, EQ_BANDS } from '../lib/spectrum';
 import { useSettings } from '../lib/settings';
@@ -16,7 +16,7 @@ import { useToast } from '../lib/toast';
 import { pushBackHandler } from '../lib/backStack';
 // v2.4.2 #E：横屏真旋转（等桥 / 校验 / 代际 token / 失败不切 UI）
 import { requestOrientation } from '../lib/orientation';
-import { setStatusBarVisible } from '../lib/navBar';
+import { setStatusBarVisible, setLandscapeBars, syncNavBarNow } from '../lib/navBar';
 
 const MODE_ICON: Record<string, { icon: 'repeat' | 'repeat-one' | 'shuffle'; label: string }> = {
   list: { icon: 'repeat', label: '列表循环' },
@@ -366,8 +366,16 @@ export function FullScreenPlayer({
   // v2.4.0 H1：横屏进入即启动 3 秒计时；超时淡出 chrome，只剩当前行歌词
   useEffect(() => {
     clearTimeout(landTimer.current);
-    if (!showLandscape) { setLandHidden(false); setStatusBarVisible(true); return; }
-    // v2.5.0 #2/#4：横屏进入即隐藏整条状态栏（点屏幕显控件时再显示）。
+    if (!showLandscape) {
+      // 退出横屏：恢复竖屏系统栏主题色，清掉横屏的透明深底设置
+      setLandHidden(false);
+      setStatusBarVisible(true);
+      syncNavBarNow();
+      return;
+    }
+    // v2.5.1 #5：进入横屏即让两条系统栏透明、播放器深底渐变透出
+    // （通知栏/手势栏 = 播放器背景色）；并隐藏整条状态栏（点屏幕显控件时再显示）。
+    setLandscapeBars();
     setStatusBarVisible(false);
     landTimer.current = window.setTimeout(() => setLandHidden(true), 3000);
     return () => clearTimeout(landTimer.current);
@@ -436,14 +444,45 @@ export function FullScreenPlayer({
       const nh = !h;
       clearTimeout(landTimer.current);
       if (!nh) landTimer.current = window.setTimeout(() => setLandHidden(true), 3000);
-      // v2.5.0 #4：控件隐藏(nh=true) → 隐藏状态栏；控件显示(nh=false) → 显示状态栏
+      // v2.5.1 #5：无论控件显隐，系统栏都保持透明深底（= 播放器背景色）。
+      // 控件显示(nh=false) → 状态栏显示(但透明深底)；控件隐藏(nh=true) → 状态栏整体隐藏。
+      setLandscapeBars();
       setStatusBarVisible(!nh);
       return nh;
     });
   };
 
-  const drop = (to: number) => {
-    if (dragIndex !== null && dragIndex !== to) player.reorderQueue(dragIndex, to);
+  // v2.5.1 #6：播放列表改触摸拖拽。HTML5 draggable/onDrop 在移动端 WebView 根本不触发，
+  // 列表一直拖不动。改用手柄 .pl-handle 上的 touch 事件：
+  //   start 记起点、move 用 elementFromPoint 找手指下的行、跨行即 live 调 reorderQueue 重排、end 收尾。
+  // 触摸事件会被浏览器捕获到 start 时的手柄节点上，所以 move/end 即使手指移出手柄也照常触发。
+  const dragFromRef = useRef<number | null>(null);
+  const justDraggedRef = useRef(false);
+  const onPlHandleTouchStart = (i: number) => (e: TouchEvent) => {
+    e.preventDefault();
+    dragFromRef.current = i;
+    setDragIndex(i);
+  };
+  const onPlHandleTouchMove = (e: TouchEvent) => {
+    if (dragFromRef.current === null) return;
+    const t = e.touches[0];
+    const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null;
+    const row = el?.closest('.fs-pl-item') as HTMLElement | null;
+    if (!row) return;
+    const to = Number(row.dataset.idx);
+    if (!Number.isNaN(to) && to !== dragFromRef.current) {
+      player.reorderQueue(dragFromRef.current, to);
+      dragFromRef.current = to;
+      setDragIndex(to);
+    }
+  };
+  const onPlHandleTouchEnd = () => {
+    if (dragFromRef.current !== null) {
+      // 防止拖完松手时手柄所在的整行 onClick 误触发播放
+      justDraggedRef.current = true;
+      window.setTimeout(() => { justDraggedRef.current = false; }, 400);
+    }
+    dragFromRef.current = null;
     setDragIndex(null);
   };
 
@@ -693,9 +732,10 @@ export function FullScreenPlayer({
               <span className="pv-ttl">未在播放</span>
             ) : (
               <>
-                <span className="pv-now-title">{it.title || '未知歌曲'}</span>
-                <span className="pv-now-sub">
-                  {[it.artist, it.album ? `《${it.album}》` : ''].filter(Boolean).join(' · ') || '未知艺术家'}
+                {/* v2.5.1 #3：顶部并单行「歌名 — 歌手」，去掉与封面下方重复的专辑。
+                    旧实现分两行（歌名 + 歌手·专辑）把第一行挤到顶、占竖向空间。 */}
+                <span className="pv-now-title">
+                  {it.title || '未知歌曲'}{it.artist ? ` — ${it.artist}` : ''}
                 </span>
               </>
             )}
@@ -899,12 +939,9 @@ export function FullScreenPlayer({
             {state.queue.map((q, i) => (
               <div
                 key={i}
+                data-idx={i}
                 className={'fs-pl-item' + (i === state.index ? ' active' : '') + (dragIndex === i ? ' dragging' : '')}
-                draggable
-                onDragStart={() => setDragIndex(i)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => drop(i)}
-                onClick={() => player.playAt(i)}
+                onClick={() => { if (justDraggedRef.current) { justDraggedRef.current = false; return; } player.playAt(i); }}
               >
                 <span className="pl-idx">{i === state.index ? <Icon name="play" size={13} /> : i + 1}</span>
                 <div className="pl-meta">
@@ -930,7 +967,14 @@ export function FullScreenPlayer({
                 >
                   <Icon name="plus" size={16} />
                 </button>
-                <span className="pl-handle" title="拖拽排序"><Icon name="menu" size={16} /></span>
+                {/* v2.5.1 #6：拖拽手柄改用 touch 事件（见 onPlHandleTouch*），HTML5 DnD 移动端不触发 */}
+                <span
+                  className="pl-handle"
+                  title="拖拽排序"
+                  onTouchStart={onPlHandleTouchStart(i)}
+                  onTouchMove={onPlHandleTouchMove}
+                  onTouchEnd={onPlHandleTouchEnd}
+                ><Icon name="menu" size={16} /></span>
               </div>
             ))}
             {state.queue.length === 0 && <div className="muted sm" style={{ padding: 24, textAlign: 'center' }}>播放列表为空，去搜索或点播一首歌吧。</div>}

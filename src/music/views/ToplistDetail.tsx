@@ -8,6 +8,12 @@ import { ToplistItem } from '../../lib/toplists';
 // v2.4.1 #I：榜单结果同样标记源指纹，保证换源后播放能走新源
 import { markSourceRev } from '../../player';
 
+// v2.5.1 #4：榜单内歌曲按 keyword 模块级缓存，返回再进秒开、不重复转圈。
+// 正常进出主页不重拉（榜单列表本身有 12h 缓存），但榜单「详情」每次实时搜，
+// 这里补一层 10min 的搜索结果缓存。
+const TL_CACHE = new Map<string, { ts: number; items: MediaItem[] }>();
+const TL_TTL = 10 * 60 * 1000;
+
 export function ToplistDetail({
   item,
   sources,
@@ -28,10 +34,23 @@ export function ToplistDetail({
   // v2.4.0 I1：用榜单 keyword 去搜「用户自己的音源」，结果即该榜单歌曲（App 不存不分发）
   useEffect(() => {
     let alive = true;
+    // v2.5.1 #4：10min 模块级缓存，返回再进同一榜单不重拉、不转圈。
+    const hit = TL_CACHE.get(item.keyword);
+    if (hit && Date.now() - hit.ts < TL_TTL) {
+      setItems(hit.items);
+      setLoading(false);
+      setSearched(true);
+      return () => { alive = false; };
+    }
     setLoading(true);
     setSearched(false);
     aggregateSearch(sources, item.keyword)
-      .then((r) => { if (alive) setItems(r.items.filter((i) => i.mediaType === 'music').map((it) => markSourceRev(it, sources))); })
+      .then((r) => {
+        if (!alive) return;
+        const items = r.items.filter((i) => i.mediaType === 'music').map((it) => markSourceRev(it, sources));
+        TL_CACHE.set(item.keyword, { ts: Date.now(), items });
+        setItems(items);
+      })
       .catch(() => { if (alive) setItems([]); })
       .finally(() => { if (alive) { setLoading(false); setSearched(true); } });
     return () => { alive = false; };
