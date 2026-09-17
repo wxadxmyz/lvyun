@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { MediaItem, SourceConfig } from '../engine/types';
 import { useLibrary } from '../lib/library';
 import { player } from '../lib/playerStore';
@@ -53,7 +54,7 @@ export function SearchTrackMenu({ item, sources, library, onPlay, onClose }: Pro
   };
 
 
-  return (
+  return createPortal(
     <div className="fs-menu-mask" onClick={onClose}>
       <div className="fs-sheet search-track-menu" onClick={(e) => e.stopPropagation()}>
         <div className="fs-sheet-grip" />
@@ -138,5 +139,5 @@ export function SearchTrackMenu({ item, sources, library, onPlay, onClose }: Pro
         </div>
       )}
     </div>
-  );
+  , document.body);
 }

@@ -158,6 +158,17 @@ FULL_BLOCK = '''
         _lvHealRunning = true
         _lvHealHandler.postDelayed(_lvHeal, 0)
     }
+    // v2.5.4 #1：启动即把 window/decorView 背景设为深色，消除原生启动白闪；
+    // 并关掉底部对比 scrim（API29+），让页面/播放器配色干净透出系统栏，
+    // 不等 React（避免「通知栏颜色晚半拍」）。每次生命周期都调一次，幂等。
+    private fun _lvInitWindow() {
+        try {
+            window?.decorView?.setBackgroundColor(android.graphics.Color.parseColor("#0d0f14"))
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                window?.isNavigationBarContrastEnforced = false
+            }
+        } catch (e: Exception) { /* ignore */ }
+    }
     var _lvNavColor: Int? = null
     var _lvNavLight: Boolean = false
     // v2.5.1 #1/#5：返回「背景是否偏浅」，供系统栏图标明暗判断复用
@@ -272,17 +283,12 @@ FULL_BLOCK = '''
         fun setSplashBars(topColor: String, bottomColor: String) {
             runOnUiThread {
                 try {
-                    window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
-                    window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-                    val tc = android.graphics.Color.parseColor(topColor)
-                    val bc = android.graphics.Color.parseColor(bottomColor)
-                    window.statusBarColor = tc
-                    window.navigationBarColor = bc
+                    // v2.5.4 #1：API35+ 已禁用 statusBarColor / navigationBarColor，
+                    // 这里不再染色，只关底部对比 scrim，让 .splash 粉紫渐变经透明栏
+                    // 直接透出（状态栏=渐变顶色、手势栏=渐变底色），与启动页同色。
                     if (android.os.Build.VERSION.SDK_INT >= 29) {
                         window.isNavigationBarContrastEnforced = false
                     }
-                    _lvStatusColor = tc
-                    _lvNavColor = bc
                     _lvStatusLight = _lvIsLightColor(topColor)
                     _lvNavLight = _lvIsLightColor(bottomColor)
                     _lvApplyAppearance()
@@ -300,17 +306,12 @@ FULL_BLOCK = '''
         fun setLandscapeBars() {
             runOnUiThread {
                 try {
-                    window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
-                    window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-                    val tc = android.graphics.Color.parseColor("#0E0C12")
-                    val bc = android.graphics.Color.parseColor("#15101B")
-                    window.statusBarColor = tc
-                    window.navigationBarColor = bc
+                    // v2.5.4 #5：API35+ 已禁用 navigationBarColor，之前的深色染色从不生效；
+                    // 这里只关底部对比 scrim，让 .fs-land 深渐变经透明栏透出手势条区域，
+                    // 手势条即播放器背景色，不再发白。
                     if (android.os.Build.VERSION.SDK_INT >= 29) {
                         window.isNavigationBarContrastEnforced = false
                     }
-                    _lvStatusColor = tc
-                    _lvNavColor = bc
                     _lvStatusLight = false
                     _lvNavLight = false
                     _lvApplyAppearance()
@@ -391,12 +392,19 @@ ROTATE_MASK_BLOCK = '''
 '''
 
 LIFECYCLE = [
-    ("onStart", "override fun onStart() {\n        super.onStart()\n        _lvHealStart()\n    }\n"),
-    ("onResume", "override fun onResume() {\n        super.onResume()\n        _lvHealStart()\n    }\n"),
+    # v2.5.4 #1：onCreate 时尽早把窗口背景/系统栏准备好，消除启动白闪与栏色慢半拍
+    ("onCreate",
+     "override fun onCreate(savedInstanceState: android.os.Bundle?) {\n"
+     "        super.onCreate(savedInstanceState)\n"
+     "        _lvInitWindow()\n    }\n"),
+    ("onStart",
+     "override fun onStart() {\n        super.onStart()\n        _lvInitWindow()\n        _lvHealStart()\n    }\n"),
+    ("onResume",
+     "override fun onResume() {\n        super.onResume()\n        _lvInitWindow()\n        _lvHealStart()\n    }\n"),
     ("onWindowFocusChanged",
      "override fun onWindowFocusChanged(hasFocus: Boolean) {\n"
      "        super.onWindowFocusChanged(hasFocus)\n"
-     "        if (hasFocus) _lvHealStart()\n    }\n"),
+     "        if (hasFocus) { _lvInitWindow(); _lvHealStart() }\n    }\n"),
 ]
 
 
@@ -473,19 +481,40 @@ def patch(path):
             src = src[:pos] + "\n    " + stub + src[pos:]
             changed.append("lifecycle:%s" % name)
         else:
-            # 已有 override，但可能没调 _lvHealStart()（例如别的 patch 先生成的）
+            # 已有 override，但可能没调 _lvInitWindow()/_lvHealStart()（例如别的 patch 先生成的）
             m = re.search(re.escape(sig) + r"[^{]*\{", src)
             if m:
-                body_start = m.end()
-                body_end = src.index("\n    }", body_start)
-                body = src[body_start:body_end]
-                if "_lvHealStart()" not in body:
-                    src = (src[:body_end]
-                           + "\n        _lvHealStart()"
-                           + src[body_end:])
+                body_start = m.end()  # 指向签名后 '{' 的下一个字符
+                # 花括号配对，找到与签名 '{' 匹配的 '}'（兼容单行/多行写法）
+                depth = 0
+                close = -1
+                i = body_start
+                while i < len(src):
+                    ch = src[i]
+                    if ch == '{':
+                        depth += 1
+                    elif ch == '}':
+                        if depth == 0:
+                            close = i
+                            break
+                        depth -= 1
+                    i += 1
+                if close == -1:
+                    print("::warning::lifecycle %s: cannot find closing brace, skip" % name)
+                    continue
+                body = src[body_start:close]
+                needs_init = "_lvInitWindow()" not in body
+                needs_heal = "_lvHealStart()" not in body
+                if needs_init or needs_heal:
+                    ins = ""
+                    if needs_init:
+                        ins += "\n        _lvInitWindow()"
+                    if needs_heal:
+                        ins += "\n        _lvHealStart()"
+                    src = src[:close] + ins + src[close:]
                     changed.append("lifecycle:%s(+call)" % name)
                 else:
-                    print("lifecycle %s: already calls _lvHealStart, skip" % name)
+                    print("lifecycle %s: already complete, skip" % name)
 
     io.open(path, "w", encoding="utf-8").write(src)
     if changed:

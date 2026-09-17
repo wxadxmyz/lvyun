@@ -845,7 +845,7 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .disclaimer-check input { width: 16px; height: 16px; }
 
 /* 搜索页（设计稿：返回 + 圆角搜索框 + 搜索按钮，无标题） */
-.searchview{flex:1;overflow-y:auto;background:var(--bg);}
+.searchview{flex:1;overflow-y:auto;background:var(--bg);padding-bottom:calc(56px + var(--sab) + 12px);}
 .searchview .searchtop{position:sticky;top:0;z-index:6;background:var(--bg);display:flex;align-items:center;gap:10px;padding:calc(10px + var(--sat)) 14px 8px;border-bottom:1px solid var(--border);}
 .searchview .searchtop .sback{width:34px;height:34px;display:flex;align-items:center;justify-content:center;color:var(--text);background:transparent;border:none;padding:0;flex:none;}
 .searchview .searchtop .sinput{flex:1;min-width:0;height:38px;border-radius:19px;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 12px;}
@@ -1003,7 +1003,7 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .fs-grid-label{ font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
 
 /* ============ 作者主页（完整页面）============ */
-.fs-author{ position:absolute; inset:0; z-index:9; display:flex; flex-direction:column; overflow:auto; background:linear-gradient(180deg,#1a1018 0%, var(--bg) 55%); animation:fade .2s; }
+.fs-author{ position:absolute; inset:0; z-index:9; display:flex; flex-direction:column; overflow:auto; background:linear-gradient(180deg,#1a1018 0%, var(--bg) 55%); animation:fade .2s; padding-bottom:calc(56px + var(--sab) + 12px); }
 .fs-author-head{ position:relative; padding:calc(12px + var(--sat)) 16px 0; }
 .fs-author-ava{ width:88px; height:88px; border-radius:50%; margin:18px auto 0; background:linear-gradient(135deg,var(--accent),var(--accent2)); display:grid; place-items:center; color:#fff; font-size:36px; font-weight:800; box-shadow:0 12px 30px rgba(255,92,138,.4); }
 .fs-author-info{ text-align:center; margin-top:14px; padding:0 24px; }
@@ -1359,8 +1359,9 @@ body.landscape-on .pv-root{ position:fixed; inset:0; z-index:60; background:var(
    所以：safeArea.ts 侧把横屏的 --sat/--sab 归零（治本，见该文件），
    这里同步把 padding 收到 0 / 4px（配合，避免再叠一层）。 */
 body.landscape-on .fs-land-content{
-  /* v2.4.10 #14：top 由 8px → 0（横屏没有状态栏）；bottom 由 8px → 4px（只留呼吸位） */
-  padding: 0 calc(28px + var(--sar)) 4px calc(28px + var(--sal));
+  /* v2.4.10 #14：top 由 8px → 0（横屏没有状态栏）；
+     v2.5.4 #4：bottom 由 4px → calc(10px + var(--sab))，把进度条抬到手势条上方，不再被吃掉 */
+  padding: 0 calc(28px + var(--sar)) calc(10px + var(--sab)) calc(28px + var(--sal));
   justify-content:space-between; gap:10px;
 }
 /* #4.2：底部呼吸位 12px → 8px（配合 --sab 兜底抬到 28px，贴住手势条又不留空带） */
