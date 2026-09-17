@@ -470,10 +470,10 @@ export function FullScreenPlayer({
       const nh = !h;
       clearTimeout(landTimer.current);
       if (!nh) landTimer.current = window.setTimeout(() => setLandHidden(true), 3000);
-      // v2.5.1 #5：无论控件显隐，系统栏都保持透明深底（= 播放器背景色）。
-      // 控件显示(nh=false) → 状态栏显示(但透明深底)；控件隐藏(nh=true) → 状态栏整体隐藏。
+      // v2.5.3 #5：横屏全程沉浸，点屏显控件也**不再 show 系统状态栏**
+      // （否则被污染的白色状态栏会冒出顶部白块）。手势栏已由 setLandscapeBars 染成深底。
       setLandscapeBars();
-      setStatusBarVisible(!nh);
+      setStatusBarVisible(false);
       return nh;
     });
   };

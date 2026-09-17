@@ -216,8 +216,11 @@ FULL_BLOCK = '''
                 _lvBind()
                 try {
                     when (orientation) {
-                        "landscape" -> requestedOrientation =
-                            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                        "landscape" -> {
+                            requestedOrientation =
+                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            _lvShowRotateMask()
+                        }
                         "sensor" -> requestedOrientation =
                             android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
                         else -> requestedOrientation =
@@ -261,42 +264,56 @@ FULL_BLOCK = '''
         // 绕开 API35+ 忽略 navigationBarColor / statusBarColor 的问题。
         // 同时关掉底部对比度白罩（isNavigationBarContrastEnforced=false），
         // 并按顶/底色明暗分别给定状态栏 / 导航栏图标明暗。
+        // v2.5.3 #1：启动页把两条系统栏**直接染色**成渐变两端色，而不是透明。
+        // 透明时透出的是窗口底色（黑）—— v2.5.2 实测就是黑条。
+        // 这里用 JS 传来的 topColor/bottomColor 直接染，并写回 _lvStatusColor/_lvNavColor，
+        // 让后续任何 _lvApplyStatusBar/NavBar 都只会维持这个色，不会被覆盖回白色。
         @android.webkit.JavascriptInterface
         fun setSplashBars(topColor: String, bottomColor: String) {
             runOnUiThread {
                 try {
                     window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
                     window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-                    window.statusBarColor = android.graphics.Color.TRANSPARENT
-                    window.navigationBarColor = android.graphics.Color.TRANSPARENT
+                    val tc = android.graphics.Color.parseColor(topColor)
+                    val bc = android.graphics.Color.parseColor(bottomColor)
+                    window.statusBarColor = tc
+                    window.navigationBarColor = bc
                     if (android.os.Build.VERSION.SDK_INT >= 29) {
                         window.isNavigationBarContrastEnforced = false
                     }
+                    _lvStatusColor = tc
+                    _lvNavColor = bc
                     _lvStatusLight = _lvIsLightColor(topColor)
                     _lvNavLight = _lvIsLightColor(bottomColor)
-                    _lvApplyStatusBar()
-                    _lvApplyNavBar()
+                    _lvApplyAppearance()
                 } catch (e: Exception) { /* ignore */ }
             }
         }
         // v2.5.1 #5：横屏让两条系统栏透明，播放器深底渐变透出 →
         // 通知栏 + 手势栏底色 = 播放器背景色（哪怕点开控件也同色）。
         // 深底 → 浅(白)图标（_lvStatusLight/_lvNavLight = false）。
+        // v2.5.3 #5：横屏把两条系统栏**直接染深渐变端点色**，而不是透明。
+        // 透明后 _lvApplyStatusBar/NavBar 会把颜色覆盖回 _lvStatusColor/_lvNavColor
+        // （进横屏前 navBar.ts 存的是 --bg 白），于是手势栏全程白条、点屏显控件时
+        // 顶部冒出白块。这里直接染深色并写回记录值，彻底堵死覆盖回退。
         @android.webkit.JavascriptInterface
         fun setLandscapeBars() {
             runOnUiThread {
                 try {
                     window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
                     window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-                    window.statusBarColor = android.graphics.Color.TRANSPARENT
-                    window.navigationBarColor = android.graphics.Color.TRANSPARENT
+                    val tc = android.graphics.Color.parseColor("#0E0C12")
+                    val bc = android.graphics.Color.parseColor("#15101B")
+                    window.statusBarColor = tc
+                    window.navigationBarColor = bc
                     if (android.os.Build.VERSION.SDK_INT >= 29) {
                         window.isNavigationBarContrastEnforced = false
                     }
+                    _lvStatusColor = tc
+                    _lvNavColor = bc
                     _lvStatusLight = false
                     _lvNavLight = false
-                    _lvApplyStatusBar()
-                    _lvApplyNavBar()
+                    _lvApplyAppearance()
                 } catch (e: Exception) { /* ignore */ }
             }
         }
@@ -324,6 +341,52 @@ FULL_BLOCK = '''
                 } catch (e: Exception) { /* ignore */ }
             }
         }
+    }
+'''
+
+ROTATE_MASK_BLOCK = '''
+    // v2.5.3 #4：横屏旋转中间态遮罩。
+    // 点横屏时 WebView 自身在重排扩尺寸，没画出来的区域露出 WebView 默认白底 + 窗口黑底，
+    // CSS 的 .ori-lock 盖不住原生层 → 闪一下"别的页面"。这里在 decorView 上盖一层深色 View，
+    // 旋转完成首帧后自动移除（OnPreDraw 一次性触发 + 兜底超时），彻底消灭闪屏。
+    private var _lvRotateMask: android.view.View? = null
+    private var _lvRotateMaskHandler: android.os.Handler? = null
+    private fun _lvShowRotateMask() {
+        try {
+            val decor = window?.decorView as? android.view.ViewGroup ?: return
+            _lvRemoveRotateMask()
+            val mask = android.view.View(this)
+            mask.setBackgroundColor(android.graphics.Color.parseColor("#0E0C12"))
+            mask.layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            mask.isClickable = true
+            decor.addView(mask)
+            _lvRotateMask = mask
+            if (_lvRotateMaskHandler == null) {
+                _lvRotateMaskHandler = android.os.Handler(android.os.Looper.getMainLooper())
+            }
+            val vto = decor.viewTreeObserver
+            val listener = object : android.view.ViewTreeObserver.OnPreDrawListener {
+                private var fired = false
+                override fun onPreDraw(): Boolean {
+                    if (!fired) {
+                        fired = true
+                        _lvRotateMaskHandler?.postDelayed({ _lvRemoveRotateMask() }, 160)
+                    }
+                    return true
+                }
+            }
+            vto.addOnPreDrawListener(listener)
+            _lvRotateMaskHandler?.postDelayed({ _lvRemoveRotateMask() }, 1600)
+        } catch (e: Exception) { /* ignore */ }
+    }
+    private fun _lvRemoveRotateMask() {
+        try {
+            _lvRotateMask?.let { (window?.decorView as? android.view.ViewGroup)?.removeView(it) }
+            _lvRotateMask = null
+        } catch (e: Exception) { /* ignore */ }
     }
 '''
 
@@ -392,7 +455,15 @@ def patch(path):
         else:
             print("setStatusBarColor+setBarsColor: already present, skip")
 
-    # 4) 生命周期里触发自愈 —— 逐项检查 override 是否存在
+    # 4) 横屏旋转遮罩（class 成员方法）
+    if "fun _lvShowRotateMask(" not in src:
+        pos = class_body_insert_pos(src)
+        src = src[:pos] + ROTATE_MASK_BLOCK + src[pos:]
+        changed.append("rotate-mask")
+    else:
+        print("rotate-mask: already present, skip")
+
+    # 5) 生命周期里触发自愈 —— 逐项检查 override 是否存在
     #    注意：不能只判断 "_lvHealStart()" 是否在 src 里，FULL_BLOCK 自带定义，
     #    会让判断恒真、钩子永远注入不进去（v2.4.5 排查时的坑）。
     for name, stub in LIFECYCLE:

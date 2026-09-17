@@ -1,6 +1,6 @@
 [package]
 name = "lvyun"
-version = "2.5.2"
+version = "2.5.3"
 description = "律云 - 可自定义 API 音源的音乐播放器"
 authors = ["LvYun Contributors"]
 edition = "2021"

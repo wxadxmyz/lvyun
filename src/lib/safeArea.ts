@@ -10,7 +10,7 @@
 // v2.4.1 #C：与 styles.css 的 --sat 兜底口径统一。
 // 此前这里写 24、CSS 兜底写 26，两处不一致 —— 若 env() 上报 0，
 // JS 兜底注入 24px 会覆盖 CSS 的 26px，实际留白比预期少 2px。
-const SAT_FALLBACK = 34; // 与 CSS 保持一致的安卓状态栏兜底高度（px）
+const SAT_FALLBACK = 44; // 与 CSS 保持一致的安卓状态栏兜底高度（px）—— v2.5.3 #2：34→44，与 styles.css:16/:33 的 44px 兜底对齐
 
 function readPx(name: string): number {
   const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -44,8 +44,10 @@ export function installSafeAreaFallback() {
      *    退出横屏时 resize 事件会重跑本函数，竖屏值自动恢复（见文件末的监听）。 */
     const landscape = window.innerWidth > window.innerHeight;
     if (landscape) {
+      // 横屏顶部无状态栏，--sat 归零避免凭空多出顶部留白带（v2.4.10 #14 实测）。
+      // --sab 不再归零：横屏底部 home 指示条仍在，归零会让 .fs-land-content
+      // 底部只剩 28px，进度条贴底易被手势条视觉干扰；保留真实高度更稳妥（v2.5.3 #6）。
       root.style.setProperty('--sat', '0px');
-      root.style.setProperty('--sab', '0px');
       return;
     }
 
