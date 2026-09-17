@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MediaItem, SourceConfig } from '../engine/types';
 import { useLibrary } from '../lib/library';
+import { pushBackHandler } from '../lib/backStack';
 import { player } from '../lib/playerStore';
 import { downloadStore } from '../lib/downloads';
 import { Icon } from './Icon';
@@ -14,6 +15,8 @@ type Props = {
   library: ReturnType<typeof useLibrary>;
   onPlay: (item: MediaItem) => void;
   onClose: () => void;
+  /** v2.5.5 #3：歌手详情页内嵌迷你条「打开播放器」的行为（关歌手页+关浮层+切 player tab），由上层透传 */
+  onOpenPlayer?: () => void;
 };
 
 /**
@@ -23,7 +26,7 @@ type Props = {
  *   喜欢 / 下一首播放 / 添加到歌单 / 下载 / 查看歌手（无分享）。
  * 「添加到歌单」展开歌单选择；「查看歌手」展开该歌手歌曲 sheet。
  */
-export function SearchTrackMenu({ item, sources, library, onPlay, onClose }: Props) {
+export function SearchTrackMenu({ item, sources, library, onPlay, onClose, onOpenPlayer }: Props) {
   // 子视图状态：null=主菜单；'playlist'=歌单选择
   // v2.5.2 #10：'artist' 视图删掉 —— 原来是在这个小 sheet 里塞简版列表，
   // 与播放器页的完整歌手主页不是一个东西。现在统一打开公共组件 ArtistPage。
@@ -52,6 +55,16 @@ export function SearchTrackMenu({ item, sources, library, onPlay, onClose }: Pro
     if (!item.artist) return;
     setArtistPage(item.artist);
   };
+
+  // v2.5.5 #3：歌手详情页打开期间，系统返回先关歌手页，再按才放行给搜索页返回
+  // （否则返回事件被底层 SearchView 的 handler 消费，直接关掉整个搜索浮层 → 像回主页）。
+  useEffect(() => {
+    if (!artistPage) return;
+    return pushBackHandler(() => {
+      setArtistPage(null);
+      return true;
+    });
+  }, [artistPage]);
 
 
   return createPortal(
@@ -135,6 +148,11 @@ export function SearchTrackMenu({ item, sources, library, onPlay, onClose }: Pro
               onClose();
             }}
             onClose={() => setArtistPage(null)}
+            onOpenPlayer={
+              onOpenPlayer
+                ? () => { setArtistPage(null); onOpenPlayer(); }
+                : undefined
+            }
           />
         </div>
       )}

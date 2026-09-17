@@ -306,6 +306,82 @@ export async function aggregateArtist(
   };
 }
 
+// v2.5.5 #6：歌手全曲缓存 —— 仿搜索缓存（模块级内存 + localStorage，TTL 10min）。
+// 同一歌手二次进入秒回，避免反复 4-5s 空等首响（首次慢源不再阻塞后续进入）。
+const ARTIST_CACHE_TTL = 10 * 60 * 1000;
+const ARTIST_CACHE_KEY = 'lvyun_artist_cache';
+const ARTIST_CACHE_MAX = 30;
+type ArtistCacheEntry = {
+  key: string;
+  ts: number;
+  data: { items: MediaItem[]; errors: { sourceId: string; message: string }[]; supported: number };
+};
+const _artistCache = new Map<string, ArtistCacheEntry>();
+
+function artistCacheKey(sources: SourceConfig[], artist: string): string {
+  const fingerprint = sources
+    .filter((s) => s.enabled)
+    .sort((a, b) => a.priority - b.priority)
+    .map((s) => s.id)
+    .join('|');
+  return `${artist.trim()}::${fingerprint}`;
+}
+
+function artistReadLocal(key: string): ArtistCacheEntry['data'] | null {
+  try {
+    const raw = localStorage.getItem(ARTIST_CACHE_KEY);
+    if (!raw) return null;
+    const arr: ArtistCacheEntry[] = JSON.parse(raw);
+    const hit = arr.find((e) => e?.key === key);
+    if (hit && Date.now() - hit.ts < ARTIST_CACHE_TTL) return hit.data;
+  } catch {
+    /* 缓存损坏/不可用：静默降级为不命中 */
+  }
+  return null;
+}
+
+function artistWriteLocal(entry: ArtistCacheEntry) {
+  try {
+    const raw = localStorage.getItem(ARTIST_CACHE_KEY);
+    let arr: ArtistCacheEntry[] = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(arr)) arr = [];
+    arr = arr.filter((e) => e?.key !== entry.key && Date.now() - (e?.ts ?? 0) < ARTIST_CACHE_TTL);
+    arr.push(entry);
+    arr = arr.sort((a, b) => b.ts - a.ts).slice(0, ARTIST_CACHE_MAX);
+    localStorage.setItem(ARTIST_CACHE_KEY, JSON.stringify(arr));
+  } catch {
+    /* 写入失败（配额/隐私模式）不影响取数 */
+  }
+}
+
+/**
+ * v2.5.5 #6：带缓存的歌手全曲聚合。force=true 跳过缓存强制刷新。
+ * 命中缓存时不再触发 onPartial（整批返回，渐进无意义）。
+ */
+export async function aggregateArtistCached(
+  sources: SourceConfig[],
+  artist: string,
+  opts: { timeout?: number; onPartial?: (items: MediaItem[]) => void; force?: boolean } = {}
+): Promise<{ items: MediaItem[]; errors: { sourceId: string; message: string }[]; supported: number; fromCache: boolean }> {
+  const key = artistCacheKey(sources, artist);
+  if (!opts.force) {
+    const mem = _artistCache.get(key);
+    if (mem && Date.now() - mem.ts < ARTIST_CACHE_TTL) {
+      return { ...mem.data, fromCache: true };
+    }
+    const local = artistReadLocal(key);
+    if (local) {
+      _artistCache.set(key, { key, ts: Date.now(), data: local });
+      return { ...local, fromCache: true };
+    }
+  }
+  const r = await aggregateArtist(sources, artist, opts);
+  const entry: ArtistCacheEntry = { key, ts: Date.now(), data: { items: r.items, errors: r.errors, supported: r.supported } };
+  _artistCache.set(key, entry);
+  artistWriteLocal(entry);
+  return { ...r, fromCache: false };
+}
+
 // v2.4.9 #1.5.5：搜索结果缓存 —— 模块级内存缓存 + localStorage 带有效期(10min)。
 // 同关键词 + 同源配置命中即秒回（回看/退回搜索页/切 Tab 回来不必重新跨源请求）。
 const SEARCH_CACHE_TTL = 10 * 60 * 1000;

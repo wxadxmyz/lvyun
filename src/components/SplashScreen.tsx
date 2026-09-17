@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { setSplashBars, syncNavBarNow, holdNavBarPush } from '../lib/navBar';
+import { setSplashBars, setWindowBackground, syncNavBarNow, holdNavBarPush } from '../lib/navBar';
 
 type Props = {
   appName: string;
@@ -36,6 +36,9 @@ export default function SplashScreen({
   // v2.5.0 #7：启动页消失后，恢复成应用主题色（navBar.ts 的 MutationObserver 也兜底）。
   useEffect(() => {
     if (gone) {
+      // v2.5.5 #1：把窗口背景从启动渐变恢复成应用深底，否则栏位透明会一直
+      // 透出粉紫渐变（进入主页/播放页后仍残留渐变底色）。
+      setWindowBackground('#0d0f14');
       // v2.5.2 #1：解除冻结（内部会立即补推一次主题色）
       holdNavBarPush(false);
       syncNavBarNow();

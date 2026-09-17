@@ -206,3 +206,17 @@ export function setLandscapeBars(): void {
     /* ignore */
   }
 }
+
+/**
+ * v2.5.5 #1：把 Android window/decorView 背景设成纯色（应用深底 / 横屏深底）。
+ * 启动页消失、退出横屏等时机调用，让透明系统栏透出与当前页面一致的颜色，
+ * 而不是残留的启动渐变 / 横屏深渐变。仅 Android 桥有效。
+ */
+export function setWindowBackground(color: string): void {
+  try {
+    const bridge = (window as any).LvYunAndroid;
+    if (bridge && typeof bridge.setWindowBackground === 'function') bridge.setWindowBackground(color);
+  } catch {
+    /* ignore */
+  }
+}

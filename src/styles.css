@@ -1003,7 +1003,7 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .fs-grid-label{ font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
 
 /* ============ 作者主页（完整页面）============ */
-.fs-author{ position:absolute; inset:0; z-index:9; display:flex; flex-direction:column; overflow:auto; background:linear-gradient(180deg,#1a1018 0%, var(--bg) 55%); animation:fade .2s; padding-bottom:calc(56px + var(--sab) + 12px); }
+.fs-author{ position:absolute; inset:0; z-index:9; display:flex; flex-direction:column; overflow:auto; overscroll-behavior-x:none; overflow-x:hidden; background:linear-gradient(180deg,#1a1018 0%, var(--bg) 55%); animation:fade .2s; padding-bottom:calc(56px + var(--sab) + 12px); }
 .fs-author-head{ position:relative; padding:calc(12px + var(--sat)) 16px 0; }
 .fs-author-ava{ width:88px; height:88px; border-radius:50%; margin:18px auto 0; background:linear-gradient(135deg,var(--accent),var(--accent2)); display:grid; place-items:center; color:#fff; font-size:36px; font-weight:800; box-shadow:0 12px 30px rgba(255,92,138,.4); }
 .fs-author-info{ text-align:center; margin-top:14px; padding:0 24px; }
@@ -1017,6 +1017,23 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .fs-author-acts .fs-pill.primary2{ background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff; border:none; }
 .fs-author-sec{ padding:18px 22px 6px; font-size:14px; font-weight:600; }
 .fs-author-tracks{ padding:4px 18px calc(20px + var(--sab)); }
+/* v2.5.5 #3：歌手详情页内嵌迷你条 —— 位置=原 Tab 位置（与 #2 同）。
+   公共组件 ArtistPage 自动带上；在 .fs-author(z9) 内重新定位到屏幕底部(贴手势区)，
+   z-index 高于 .fs-author 内容即可盖住作品区、不压歌曲（.fs-author 已留 56px 底部）。 */
+.fs-author .mini-player{ bottom:var(--sab); z-index:11; left:8px; right:8px; }
+/* v2.5.5 #6：歌手页作品区骨架屏（进入加载首响期间占位，不像卡住） */
+.fs-author-skeleton{ display:flex; flex-direction:column; gap:2px; padding:4px 18px; }
+.skel-row{ display:flex; align-items:center; gap:12px; padding:11px 4px; }
+.skel-idx{ width:22px; height:14px; border-radius:4px; flex-shrink:0; }
+.skel-cover{ width:46px; height:46px; border-radius:10px; flex-shrink:0; }
+.skel-meta{ flex:1; display:flex; flex-direction:column; gap:6px; }
+.skel-name{ height:13px; border-radius:4px; width:60%; }
+.skel-sub{ height:11px; border-radius:4px; width:40%; }
+.skel-idx,.skel-cover,.skel-name,.skel-sub{
+  background:linear-gradient(90deg, var(--panel3) 25%, var(--panel2) 50%, var(--panel3) 75%);
+  background-size:200% 100%; animation:skel-shine 1.2s ease-in-out infinite;
+}
+@keyframes skel-shine{ from{ background-position:200% 0; } to{ background-position:-200% 0; } }
 .fs-author-track{ display:flex; align-items:center; gap:12px; padding:11px 4px; cursor:pointer; }
 .fs-author-track .at-idx{ width:22px; text-align:center; color:var(--muted); font-size:13px; flex-shrink:0; }
 .fs-author-track .at-cover{ width:46px; height:46px; border-radius:10px; flex-shrink:0; }
@@ -1048,10 +1065,10 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
   cursor:pointer;
 }
 .fs-land-cur,.fs-land-total{
-  flex:0 0 auto; font-size:12px; color:var(--muted);
+  flex:0 0 54px; text-align:center; font-size:12px; color:var(--muted);
   font-variant-numeric:tabular-nums; white-space:nowrap;
 }
-.fs-land-bar{ width:100%; height:4px; border-radius:4px; background:rgba(255,255,255,.35); position:relative;
+.fs-land-bar{ flex:1 1 auto; min-width:0; width:auto; height:4px; border-radius:4px; background:rgba(255,255,255,.35); position:relative;
               /* v2.4.10 #10：touch-action:none 让指针拖动不被浏览器当成页面滚动抢走 */
               cursor:pointer; touch-action:none;
               /* v2.4.10 #11：去掉 overflow:hidden。
@@ -1790,7 +1807,7 @@ body.landscape-on .fs-land-times{ margin-top:4px; margin-bottom:0; }
 .search-track-menu .stm-title{ font-size:15px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .search-track-menu .stm-sub{ font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .search-track-menu .stm-back{ width:34px; height:34px; border:none; background:transparent; color:var(--text);
-  display:grid; place-items:center; border-radius:50%; cursor:pointer; flex:0 0 auto; }
+  display:grid; place-items:center; border-radius:50%; cursor:pointer; flex:0 0 auto; padding:0; }
 .search-track-menu .stm-back:hover{ background:var(--panel2); }
 .search-track-menu .fs-sheet-head .icon img,
 .search-track-menu .fs-sheet-head .icon span{ width:100%; height:100%; border-radius:50%; object-fit:cover; }
@@ -1822,6 +1839,10 @@ body.landscape-on .fs-land-times{ margin-top:4px; margin-bottom:0; }
   box-shadow:0 6px 20px rgba(0,0,0,.28);
   cursor:pointer; animation:fade .2s;
 }
+/* v2.5.5 #2：全屏覆盖页（搜索/历史/本地）打开时，底部 Tab 被 .fullpage 盖住，
+   迷你播放条降回原 Tab 位置（bottom: var(--sab)），正好填进那条被盖住的 Tab 空隙，
+   不再空出一条 --tabbar 高、压住结果。 */
+.overlay-open .mini-player { bottom: var(--sab); }
 /* 顶部 2px 细进度线：不占布局高度，只做「播到哪了」的提示 */
 .mini-player .mp-bar{ position:absolute; left:0; right:0; top:0; height:2px; background:var(--panel2); }
 .mini-player .mp-bar i{ display:block; height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2)); }

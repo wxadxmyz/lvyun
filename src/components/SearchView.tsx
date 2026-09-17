@@ -23,6 +23,7 @@ export function SearchView({
   initialQuery,
   onClose,
   active = true,
+  onOpenPlayer,
 }: {
   sources: SourceConfig[];
   onPlay: (item: MediaItem) => void;
@@ -39,6 +40,8 @@ export function SearchView({
    * 宿主从 display:none 恢复时 scrollTop 会被浏览器重置为 0，需要自己记住。
    */
   active?: boolean;
+  /** v2.5.5 #3：歌手详情页内嵌迷你条的「打开播放器」行为，透传给 SearchTrackMenu。 */
+  onOpenPlayer?: () => void;
 }) {
   const [kw, setKw] = useState(initialQuery ?? '');
   const [items, setItems] = useState<MediaItem[]>([]);
@@ -319,6 +322,7 @@ export function SearchView({
           library={library}
           onPlay={onPlay}
           onClose={() => setMenuItem(null)}
+          onOpenPlayer={onOpenPlayer}
         />
       )}
     </div>

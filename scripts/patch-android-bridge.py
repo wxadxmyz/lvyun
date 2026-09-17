@@ -125,6 +125,9 @@ FULL_BLOCK = '''
     }
     override fun onWebViewCreate(webView: android.webkit.WebView) {
         super.onWebViewCreate(webView)
+        // v2.5.5 #1：WebView 首帧背景设深色，消除加载前系统默认白底导致的白闪
+        // （decorView 渐变已就位，但 WebView 自身渲染前仍是白色）。
+        try { webView.setBackgroundColor(android.graphics.Color.parseColor("#15101B")) } catch (e: Exception) { /* ignore */ }
         _lvBindTo(webView)
         _lvHealHandler.postDelayed({ _lvBind() }, 800)
     }
@@ -158,12 +161,28 @@ FULL_BLOCK = '''
         _lvHealRunning = true
         _lvHealHandler.postDelayed(_lvHeal, 0)
     }
-    // v2.5.4 #1：启动即把 window/decorView 背景设为深色，消除原生启动白闪；
-    // 并关掉底部对比 scrim（API29+），让页面/播放器配色干净透出系统栏，
-    // 不等 React（避免「通知栏颜色晚半拍」）。每次生命周期都调一次，幂等。
+    // v2.5.5 #1：启动即把 window/decorView 背景设为「启动渐变」（粉→紫→深紫），
+    // 与 SplashScreen 完全一致；并关掉底部对比 scrim（API29+），让透明的系统栏
+    // 透出渐变而非窗口黑底（v2.5.4 设的是 #0d0f14 纯黑，导致启动页状态栏/手势栏发黑）。
+    // WebView 首帧背景在 onWebViewCreate 设深色，避免加载前白闪（见下）。
+    // 每次生命周期都调一次，幂等。
+    private fun _lvSplashBg() {
+        try {
+            val g = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(
+                    android.graphics.Color.parseColor("#FF7AB6"),
+                    android.graphics.Color.parseColor("#C05CFF"),
+                    android.graphics.Color.parseColor("#3A1E5C")
+                )
+            )
+            window?.setBackgroundDrawable(g)
+            window?.decorView?.setBackgroundDrawable(g)
+        } catch (e: Exception) { /* ignore */ }
+    }
     private fun _lvInitWindow() {
         try {
-            window?.decorView?.setBackgroundColor(android.graphics.Color.parseColor("#0d0f14"))
+            _lvSplashBg()
             if (android.os.Build.VERSION.SDK_INT >= 29) {
                 window?.isNavigationBarContrastEnforced = false
             }
@@ -270,6 +289,20 @@ FULL_BLOCK = '''
                 } catch (e: Exception) { /* ignore */ }
             }
         }
+        // v2.5.5 #1：把 window/decorView 背景设成任意纯色（应用深底 / 横屏深底）。
+        // 启动页渐变由 _lvSplashBg 负责；本接口供「启动页消失」「退出横屏」等时机
+        // 把窗口背景恢复成与当前页面一致的颜色，避免栏位透明透出旧背景。
+        @android.webkit.JavascriptInterface
+        fun setWindowBackground(color: String) {
+            runOnUiThread {
+                try {
+                    val c = android.graphics.Color.parseColor(color)
+                    val d = android.graphics.drawable.ColorDrawable(c)
+                    window?.setBackgroundDrawable(d)
+                    window?.decorView?.setBackgroundDrawable(d)
+                } catch (e: Exception) { /* ignore */ }
+            }
+        }
         // v2.5.1 #1：启动页让两条系统栏「透明」，下方粉紫渐变 WebView 直接透出 →
         // 顶/底与渐变同色「消失」，而不是白块。透明在各 Android 版本都生效，
         // 绕开 API35+ 忽略 navigationBarColor / statusBarColor 的问题。
@@ -306,11 +339,22 @@ FULL_BLOCK = '''
         fun setLandscapeBars() {
             runOnUiThread {
                 try {
-                    // v2.5.4 #5：API35+ 已禁用 navigationBarColor，之前的深色染色从不生效；
-                    // 这里只关底部对比 scrim，让 .fs-land 深渐变经透明栏透出手势条区域，
-                    // 手势条即播放器背景色，不再发白。
+                    // v2.5.5 #5：把 window/decorView 背景同步成横屏深渐变（与 .fs-land 同色），
+                    // 这样透明手势栏透出的是深渐变而非系统默认浅色 → 不再发白。
+                    // 同时关掉状态栏 + 导航栏的对比度强制白罩（API29+），否则即使把条设
+                    // 透明/深底，系统仍会在栏位区域叠一层浅色 scrim。
+                    val g = android.graphics.drawable.GradientDrawable(
+                        android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                        intArrayOf(
+                            android.graphics.Color.parseColor("#0e0c12"),
+                            android.graphics.Color.parseColor("#15101b")
+                        )
+                    )
+                    window?.setBackgroundDrawable(g)
+                    window?.decorView?.setBackgroundDrawable(g)
                     if (android.os.Build.VERSION.SDK_INT >= 29) {
-                        window.isNavigationBarContrastEnforced = false
+                        window?.isNavigationBarContrastEnforced = false
+                        window?.isStatusBarContrastEnforced = false
                     }
                     _lvStatusLight = false
                     _lvNavLight = false

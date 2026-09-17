@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { MediaItem, SourceConfig } from '../engine/types';
-import { aggregateArtist, aggregateSearch } from '../engine';
+import { aggregateArtistCached, aggregateSearch } from '../engine';
 import { useToast } from '../lib/toast';
 import { Icon } from '../components/Icon';
 import { gradientFor } from '../lib/cover';
+import MiniPlayer from './MiniPlayer';
 
 type Props = {
   /** 歌手名（为空时页面提示「没有歌手信息」） */
@@ -14,6 +15,8 @@ type Props = {
   /** 点击列表里的歌：由调用方决定怎么播（播放页直接播 / 搜索页播完关浮层） */
   onPlay: (list: MediaItem[], index: number) => void;
   onClose: () => void;
+  /** v2.5.5 #3：点内嵌迷你条的行为（搜索入口→关浮层切播放页；播放器入口→关歌手页）。可选。 */
+  onOpenPlayer?: () => void;
 };
 
 /**
@@ -31,7 +34,7 @@ type Props = {
  *   ③ 一条都没取到才回退「按歌手名聚合搜索」；
  *   ④ 全程「只增不改」，避免列表整体替换导致点第 2 行播第 1 行。
  */
-export default function ArtistPage({ artist, sources, queue, onPlay, onClose }: Props) {
+export default function ArtistPage({ artist, sources, queue, onPlay, onClose, onOpenPlayer }: Props) {
   const toast = useToast();
   const [tracks, setTracks] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -65,7 +68,7 @@ export default function ArtistPage({ artist, sources, queue, onPlay, onClose }: 
         push(fromQueue);
         if (merged.length) setTracks([...merged]);
 
-        const a = await aggregateArtist(sources, name, {
+        const a = await aggregateArtistCached(sources, name, {
           onPartial: (partial) => {
             if (!alive) return;
             push(partial);
@@ -117,8 +120,24 @@ export default function ArtistPage({ artist, sources, queue, onPlay, onClose }: 
       </div>
       <div className="fs-author-sec">热门作品</div>
       <div className="fs-author-tracks">
-        {loading && <div className="muted sm" style={{ padding: 16, textAlign: 'center' }}>正在获取「{artist}」的作品…</div>}
-        {!loading && tracks.slice(0, shown).map((q, i) => (
+        {loading && tracks.length === 0 && (
+          // v2.5.5 #6：骨架屏占位（替代只有一个「正在获取」文案），进入不再像卡住
+          <div className="fs-author-skeleton" aria-hidden="true">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div className="skel-row" key={i}>
+                <span className="skel-idx" />
+                <span className="skel-cover" />
+                <span className="skel-meta"><i className="skel-name" /><i className="skel-sub" /></span>
+              </div>
+            ))}
+          </div>
+        )}
+        {!loading && tracks.length === 0 && (
+          <div className="muted sm" style={{ padding: 16, textAlign: 'center' }}>
+            {artist ? `没有获取到「${artist}」的作品，可能是该源不支持歌手全曲接口。` : '当前歌曲没有歌手信息。'}
+          </div>
+        )}
+        {tracks.length > 0 && tracks.slice(0, shown).map((q, i) => (
           <div
             key={q.sourceId + ':' + q.id}
             className="fs-author-track"
@@ -141,12 +160,10 @@ export default function ArtistPage({ artist, sources, queue, onPlay, onClose }: 
             加载更多（还有 {tracks.length - shown} 首）
           </button>
         )}
-        {!loading && tracks.length === 0 && (
-          <div className="muted sm" style={{ padding: 16, textAlign: 'center' }}>
-            {artist ? `没有获取到「${artist}」的作品，可能是该源不支持歌手全曲接口。` : '当前歌曲没有歌手信息。'}
-          </div>
-        )}
       </div>
+      {/* v2.5.5 #3：歌手详情页内嵌迷你播放条，位置=原 Tab 位置（见 styles.css .fs-author .mini-player）。
+          公共组件，搜索/播放器两个入口自动带上。 */}
+      <MiniPlayer onOpen={onOpenPlayer ?? (() => {})} />
     </div>
   );
 }

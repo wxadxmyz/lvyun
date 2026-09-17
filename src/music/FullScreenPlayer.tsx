@@ -17,7 +17,7 @@ import { useToast } from '../lib/toast';
 import { pushBackHandler } from '../lib/backStack';
 // v2.4.2 #E：横屏真旋转（等桥 / 校验 / 代际 token / 失败不切 UI）
 import { requestOrientation } from '../lib/orientation';
-import { setStatusBarVisible, setLandscapeBars, syncNavBarNow, holdNavBarPush } from '../lib/navBar';
+import { setStatusBarVisible, setLandscapeBars, setWindowBackground, syncNavBarNow, holdNavBarPush } from '../lib/navBar';
 
 const MODE_ICON: Record<string, { icon: 'repeat' | 'repeat-one' | 'shuffle'; label: string }> = {
   list: { icon: 'repeat', label: '列表循环' },
@@ -374,6 +374,9 @@ export function FullScreenPlayer({
       holdNavBarPush(false);
       setLandHidden(false);
       setStatusBarVisible(true);
+      // v2.5.5 #5：退出横屏把窗口背景从横屏深渐变恢复成应用深底，
+      // 否则竖屏栏位透明会一直透出横屏深渐变。
+      setWindowBackground('#0d0f14');
       syncNavBarNow();
       return;
     }
@@ -992,6 +995,7 @@ export function FullScreenPlayer({
             player.playQueue(list, idx);
           }}
           onClose={() => setShowAuthor(false)}
+          onOpenPlayer={() => setShowAuthor(false)}
         />
       )}
 

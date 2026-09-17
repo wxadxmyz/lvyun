@@ -46,6 +46,9 @@ export default function MusicApp() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsSub, setSettingsSub] = useState<string | null>(null);
   const [localOpen, setLocalOpen] = useState(false);
+  // v2.5.5 #2：任一全屏覆盖页（搜索/历史/本地）打开时，底部 Tab 被 .fullpage 盖住，
+  // 给 .app 加 overlay-open，让迷你播放条降回原 Tab 位置（见 styles.css）。
+  const overlayOpen = searchOpen || historyOpen || localOpen;
 
   // 统一切 tab：进入播放页时记忆来源 tab，供系统返回手势回退到上一级
   const goTab = (t: Tab) => {
@@ -227,7 +230,7 @@ export default function MusicApp() {
         iconSrc={import.meta.env.BASE_URL + 'icon.png'}
         gradient="linear-gradient(160deg, #FF7AB6 0%, #C05CFF 45%, #3A1E5C 100%)"
       />
-      <div className="app music-theme">
+      <div className={"app music-theme" + (overlayOpen ? " overlay-open" : "")}>
       <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
         <defs>
           <linearGradient id="lvTabGrad" x1="0" y1="0" x2="1" y2="1">
@@ -323,6 +326,7 @@ export default function MusicApp() {
               placeholder="搜索歌曲 / 歌手 / 专辑…"
               initialQuery={searchQuery}
               active={tab !== 'player'}
+              onOpenPlayer={() => { setSearchOpen(false); setTab('player'); }}
             />
           </div>
         )}
