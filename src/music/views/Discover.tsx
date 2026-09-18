@@ -6,6 +6,17 @@ import { Icon } from '../../components/Icon';
 import { fetchToplists, ToplistItem } from '../../lib/toplists';
 import { ToplistDetail } from './ToplistDetail';
 
+// v2.6.0：把榜单主色提亮，派生出 2×2 拼图的另外两块色（无真实封面图，用色块拼出 UI.html 拼图感）
+function lighten(hex: string, amt: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const r = Math.min(255, ((n >> 16) & 255) + amt);
+  const g = Math.min(255, ((n >> 8) & 255) + amt);
+  const b = Math.min(255, (n & 255) + amt);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 export function Discover({
   sources,
   library,
@@ -118,10 +129,18 @@ export function Discover({
                   key={t.id}
                   className="tl-card"
                   onClick={() => setActive(t)}
-                  style={{ background: `linear-gradient(140deg, ${c1}, ${c2})` }}
                 >
-                  <span className="tl-rank">{t.initial ?? t.name.slice(0, 1)}</span>
-                  <span className="tl-name">{t.name}</span>
+                  {/* v2.6.0：2×2 封面拼图（色块由榜单主色派生） */}
+                  <span className="tg">
+                    <i style={{ background: c1 }} />
+                    <i style={{ background: lighten(c1, 38) }} />
+                    <i style={{ background: lighten(c2, 38) }} />
+                    <i style={{ background: c2 }} />
+                  </span>
+                  <span className="ti">
+                    <span className="tn">{t.name}</span>
+                    {t.desc && <span className="ts">{t.desc}</span>}
+                  </span>
                 </button>
               );
             })}

@@ -6,7 +6,7 @@ import type { useLibrary } from '../lib/library';
 import { SourceConfig, MediaItem } from '../engine/types';
 // v2.4.5 #5：作者页改为真实搜索（此前只在播放队列里筛，所以只有播放过的歌）
 import { aggregateSearch, aggregateArtist } from '../engine';
-import { gradientFor } from '../lib/cover';
+import { gradientFor, coverColors } from '../lib/cover';
 import { Icon } from '../components/Icon';
 import ArtistPage from './ArtistPage';
 // v2.4.6 #7：命令式中文输入弹窗（替代 window.prompt —— Android WebView 的原生
@@ -243,6 +243,9 @@ export function FullScreenPlayer({
   const it = state.current ?? ({ title: '未在播放', artist: '', album: '', id: '', sourceId: '', cover: undefined, lyric: [] } as any);
   const empty = !state.current;
   const fav = state.current ? library.isFavorite(it) : false;
+  // v2.6.0：按当前曲目封面取两路主色，注入 .pv-root 的 --c1/--c2，
+  // 驱动播放页光晕背景（.pv-bg）与封面环境光投影 / 播放键光晕（见 styles.css）。
+  const cc = coverColors(it.cover || it.title || 'x');
 
   // v2.4.6 #11：决定「加歌单」作用于哪首歌。
   //   addTarget 为空 → 跟随当前播放歌曲（⋮ 菜单入口）
@@ -659,6 +662,7 @@ export function FullScreenPlayer({
           这里上下各自处理安全区、左右到边，真正「占满屏幕」（旧实现被 .main 的内边距夹住，四周留白）。 */}
       <div
         className="pv-root"
+        style={{ '--c1': cc[0], '--c2': cc[1] } as React.CSSProperties}
       onTouchStart={(e) => {
         // v2.4.10 #4：滑动区 / 控件区内的触摸不参与「上下滑切歌」判定。
         // 旧实现无条件记录起点，于是「上滑歌词」会被 .pv-root 的 onTouchEnd 当成
@@ -687,6 +691,8 @@ export function FullScreenPlayer({
         }
       }}
     >
+      {/* v2.6.0：播放页取色光晕背景层（位于 .pv-player 之下，z-index:0） */}
+      <div className="pv-bg" />
       {/* ===== 主界面：1:1 对齐设计稿 ⑤「未在播放」/ ⑥「播放中」===== */}
       <div className="pv-player">
         {/* 顶栏：汉堡 22px | 正 在 播 放 12px/字距2 | 竖三点 22px */}
@@ -736,6 +742,7 @@ export function FullScreenPlayer({
           </div>
         ) : (
           <div
+            key={it.id}
             className={'pv-cover' + (empty ? ' empty' : '')}
             onClick={() => !empty && setCoverLyric(true)}
             title={empty ? undefined : '查看歌词'}

@@ -196,7 +196,7 @@ function apply(skin: Skin) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [selectedId, setSelectedId] = useState<string>(() => localStorage.getItem(KEY) || 'clean');
+  const [selectedId, setSelectedId] = useState<string>(() => localStorage.getItem(KEY) || 'night');
   const [systemDark, setSystemDark] = useState<boolean>(getSystemDark);
 
   // 跟随系统时：按系统明暗选用记忆的暗/亮色皮肤；手动选择：用所选皮肤

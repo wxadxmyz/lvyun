@@ -21,6 +21,10 @@
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
   --tabbar: 50px; /* 底部 Tab 栏主体高度（不含手势条安全区），v2.3.9 由 56px 收紧 */
+  /* v2.6.0：对齐 UI.html 设计令牌。
+     --ease 默认缓动；--spring 弹簧缓动（用于按钮/卡片回弹，见 .tl-card:active / .pv-cover 等）。 */
+  --ease: cubic-bezier(.32, .72, 0, 1);
+  --spring: cubic-bezier(.34, 1.42, .64, 1);
 }
 /* v2.4.1 #C：对齐慕海 styles.css:20-27 的「双段兜底」写法。
    支持 max() 的设备（现代 Chrome / iOS Safari）升级为「取较大值」，
@@ -152,18 +156,24 @@ button.fav, .fav { color: var(--danger) !important; }
 .mini-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 10px; cursor: pointer; transition: .15s; }
 .mini-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 
-/* v2.4.0 I1：主页热门榜单 3×3 九宫格（正方形封面，策展式无图渐变） */
+/* v2.4.0 I1：主页热门榜单；v2.6.0 改为 2 列大圆角卡片 + 封面拼图（移植 UI.html .tlgrid / .tlcard） */
 .toplist-section { margin-top: 4px; }
-.toplist-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 4px; }
-.tl-card { position: relative; aspect-ratio: 1; border: none; border-radius: 12px; overflow: hidden;
-  display: grid; place-items: center; cursor: pointer; padding: 0; transition: transform .09s ease; }
+.toplist-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; margin-top: 6px; }
+.tl-card { position: relative; border: none; cursor: pointer; display: flex; align-items: center; gap: 11px;
+  text-align: left; color: var(--text); padding: 10px 12px 10px 10px; border-radius: 18px; background: var(--card);
+  box-shadow: 0 8px 22px -10px rgba(0,0,0,.5), 0 1px 0 rgba(255,255,255,.04) inset;
+  transition: transform .2s var(--spring, ease), background .2s; }
 .tl-card:active { transform: scale(.955); }
-.tl-rank { position: absolute; top: 6px; left: 6px; width: 22px; height: 22px; border-radius: 7px;
-  background: rgba(255,255,255,.22); color: #fff; font-size: 13px; font-weight: 700;
-  display: flex; align-items: center; justify-content: center; }
-.tl-name { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 8px 7px;
-  background: linear-gradient(180deg, transparent, rgba(0,0,0,.78)); color: #fff;
-  font-size: 14px; font-weight: 700; text-align: left; line-height: 1.2; }
+/* 2×2 封面拼图：四块色由榜单主色派生（无真实封面图，用色块拼出 UI.html 的拼图感） */
+.tl-card .tg { width: 64px; height: 64px; flex: 0 0 auto; border-radius: 14px; overflow: hidden;
+  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 2px;
+  box-shadow: 0 6px 16px -6px rgba(0,0,0,.5), 0 1px 3px rgba(0,0,0,.3); }
+.tl-card .tg i { display: block; }
+.tl-card .ti { flex: 1; min-width: 0; }
+.tl-card .tn { display: block; font-size: 14.5px; font-weight: 700; letter-spacing: .2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-card .ts { display: block; margin-top: 4px; font-size: 11.5px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* 榜单详情页头部：榜名 + 副标题 */
 .fp-head { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .fp-head h3 { margin: 0; font-size: 17px; }
@@ -188,7 +198,7 @@ button.fav, .fav { color: var(--danger) !important; }
 .sh-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; color: var(--muted); font-size: 13px; }
 .result-group { margin-bottom: 24px; }
 .result-group h4 { margin: 0 0 12px; font-size: 13px; color: var(--muted); font-weight: 600; }
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .card { display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 11px; padding: 10px 12px; cursor: pointer; position: relative; transition: .15s; }
 .card:hover { border-color: var(--accent); }
 .cover { width: 46px; height: 46px; border-radius: 9px; background: var(--panel2); display: grid; place-items: center; font-size: 22px; overflow: hidden; flex-shrink: 0; }
@@ -654,17 +664,44 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
          原先播放页同时吃 .main 的 padding(14px / tabbar+80px) 与 .pv-player 自己的 padding，
          两重叠加后四周留白，且 min-height:100% 量的是已扣除 padding 的 content-box。 */
 .pv-root{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
-.pv-player{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column; align-items:center;
+.pv-player{ position:relative; z-index:1; flex:1; min-height:0; display:flex; flex-direction:column; align-items:center;
   padding:calc(var(--sat, 26px) + 18px) 20px calc(14px + var(--tabbar) + var(--sab)); overflow:hidden; }
 .pv-player > *{ position:relative; z-index:1; width:100%; }
+/* v2.6.0：播放页取色光晕背景（移植 UI.html .pbg）。
+   --c1/--c2 由 FullScreenPlayer 按当前曲目封面注入到 .pv-root 上，
+   与 cover.ts 的 coverColors() 同色系；无封面时回退到皮肤主色。
+   模糊 + 放大 + 半透明，让光晕柔和不抢主体，叠在 .pv-root 的 --bg 之上。 */
+.pv-bg{ position:absolute; inset:0; z-index:0; opacity:.62; pointer-events:none;
+  background:
+    radial-gradient(circle at 26% 16%, var(--c1, var(--accent)) 0%, transparent 56%),
+    radial-gradient(circle at 78% 82%, var(--c2, var(--accent2)) 0%, transparent 60%),
+    linear-gradient(160deg, var(--c1, var(--accent)) 0%, rgba(10,11,16,.9) 52%, var(--bg) 100%);
+  filter:blur(38px) saturate(1.25); transform:scale(1.12);
+  transition:background .8s var(--ease, ease); }
+.pv-bg::before{ content:""; position:absolute; inset:-18%;
+  background:radial-gradient(circle at 50% 30%, rgba(255,255,255,.16) 0%, transparent 46%);
+  filter:blur(20px); animation:glowDrift 16s ease-in-out infinite alternate; }
+.pv-bg::after{ content:""; position:absolute; inset:0;
+  background:radial-gradient(96% 52% at 50% 6%, rgba(255,255,255,.06) 0%, transparent 58%),
+             linear-gradient(180deg, transparent 0%, rgba(10,11,16,.68) 58%, var(--bg) 100%); }
+@keyframes glowDrift{ 0%{ transform:translate3d(-2%,-1%,0) scale(1); } 100%{ transform:translate3d(3%,2%,0) scale(1.08); } }
+/* v2.6.0：切歌时封面回弹（移植 UI.html .art.swap）。
+   在 FullScreenPlayer 给 .pv-cover 加 key={it.id}，换歌即重新挂载触发本动画。 */
+@keyframes artSwap{ from{ opacity:.28; transform:scale(.92) translateY(10px); } to{ opacity:1; transform:none; } }
 .pv-top{ display:flex; align-items:center; justify-content:space-between; color:#dcdce2; margin-bottom:10px; flex:none; }
 .pv-mi{ width:22px; height:22px; flex:none; padding:0; border:none; background:transparent; color:inherit;
   display:flex; align-items:center; justify-content:center; cursor:pointer; }
 .pv-mi svg{ width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
 .pv-ttl{ font-size:12px; color:var(--sub, var(--muted)); letter-spacing:2px; }
 .pv-cover{ width:240px; height:240px; border-radius:20px; margin:8px auto 0; flex:none;
-  background:linear-gradient(140deg, var(--accent), #33243f); box-shadow:0 20px 48px rgba(0,0,0,.5);
-  display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; }
+  background:linear-gradient(140deg, var(--accent), #33243f);
+  /* v2.6.0：环境光投影（移植 UI.html .art）—— 主色 --c1 打底光、--c2 外扩彩晕 */
+  box-shadow:0 36px 74px -22px var(--c1, rgba(0,0,0,.66)), 0 0 120px -34px var(--c2, rgba(0,0,0,.35)),
+             0 6px 18px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.22);
+  display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer;
+  /* v2.6.0：切歌回弹（配合 JSX 的 key={it.id}） */
+  animation:artSwap .5s var(--ease, ease); transition:transform .34s var(--ease, ease); }
+.pv-cover:active{ transform:scale(.975); }
 .pv-cover svg{ width:56px; height:56px; fill:#fff; opacity:.92; }
 .pv-cover img{ width:100%; height:100%; object-fit:cover; display:block; }
 /* 空态封面：灰底 + 1px 描边 + 无阴影 + 半透明音符（设计稿 .cover.empty） */
@@ -709,6 +746,13 @@ input[type='range'] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
    现在颜色一律由图标自身 currentColor 决定，CSS 只管尺寸。 */
 .pv-btn svg{ width:22px; height:22px; display:block; }
 .pv-btn.play svg{ width:28px; height:28px; fill:#fff; stroke:none; }
+/* v2.6.0：播放键改为彩色渐变 + 主色光晕（移植 UI.html .playbig）。
+   空态（.disabled）也保留渐变，作为播放页唯一主 CTA；svg 白色填充由上方规则保证。 */
+.pv-btn.play{ background:linear-gradient(135deg, var(--accent), var(--accent2)); color:#fff; border:none;
+  box-shadow:0 16px 36px -10px var(--c1, rgba(255,92,138,.5)), 0 0 0 6px rgba(255,255,255,.07),
+             inset 0 1px 0 rgba(255,255,255,.34);
+  transition:transform .16s var(--ease, ease), box-shadow .3s; }
+.pv-btn.play:active{ transform:scale(.93); }
 .pv-btn.like.on{ color:var(--accent); }
 .pv-btn.like.on svg{ fill:currentColor; stroke:none; }
 /* 非「列表循环」时模式键染主题色，配合 toast 让切换有明确反馈 */
@@ -1594,7 +1638,9 @@ body.landscape-on .fs-land.hidden .fs-land-back{ opacity:0; pointer-events:none;
   width:min(78vw, 330px); height:min(78vw, 330px);
   max-width:100%; max-height:100%;
   border-radius:24px; margin:0;
-  box-shadow:0 24px 56px rgba(0,0,0,.52);
+  /* v2.6.0：环境光投影（与基础 .pv-cover 对齐） */
+  box-shadow:0 36px 74px -22px var(--c1, rgba(0,0,0,.66)), 0 0 120px -34px var(--c2, rgba(0,0,0,.35)),
+             0 6px 18px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.22);
 }
 .pv-lyrics{
   width:min(78vw, 330px); height:min(78vw, 330px);
@@ -1614,7 +1660,8 @@ body.landscape-on .fs-land.hidden .fs-land-back{ opacity:0; pointer-events:none;
   gap:1px; text-align:center;
 }
 .pv-now-title{
-  max-width:100%; font-size:16px; font-weight:800; line-height:1.25; color:var(--text);
+  max-width:100%; font-size:19px; font-weight:800; line-height:1.28; color:var(--text);
+  text-shadow:0 2px 18px rgba(0,0,0,.35);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .pv-now-sub{
