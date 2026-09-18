@@ -125,9 +125,11 @@ FULL_BLOCK = '''
     }
     override fun onWebViewCreate(webView: android.webkit.WebView) {
         super.onWebViewCreate(webView)
-        // v2.5.5 #1：WebView 首帧背景设深色，消除加载前系统默认白底导致的白闪
-        // （decorView 渐变已就位，但 WebView 自身渲染前仍是白色）。
-        try { webView.setBackgroundColor(android.graphics.Color.parseColor("#15101B")) } catch (e: Exception) { /* ignore */ }
+        // v2.5.6 #1：WebView 首帧背景设「透明」，让 decorView 的启动渐变贯穿预渲染期
+        // （清单①：消除 v2.5.5 的 #15101B 深灰底与 React 启动页渐变打架导致的「深灰闪一下」）。
+        // decorView 渐变由 _lvSplashBg 在 onCreate 就位；WebView 透明后透出该渐变，
+        // 与 SplashScreen 同色值 → 中间不再露深灰/黑，启动只有一次「渐变→界面」过渡。
+        try { webView.setBackgroundColor(android.graphics.Color.TRANSPARENT) } catch (e: Exception) { /* ignore */ }
         _lvBindTo(webView)
         _lvHealHandler.postDelayed({ _lvBind() }, 800)
     }
@@ -437,18 +439,22 @@ ROTATE_MASK_BLOCK = '''
 
 LIFECYCLE = [
     # v2.5.4 #1：onCreate 时尽早把窗口背景/系统栏准备好，消除启动白闪与栏色慢半拍
+    # v2.5.6 #2：仅 onCreate 调 _lvInitWindow() 首启设一次启动渐变；其余生命周期
+    # （onStart / onResume / onWindowFocusChanged）属「前台返回」路径，刻意不重设渐变
+    # （零闪回），只保活桥。窗口底色后续由 JS setWindowBackground 按当前页维护，
+    # 兜底由 styles.xml 的 windowBackground 渐变承担。
     ("onCreate",
      "override fun onCreate(savedInstanceState: android.os.Bundle?) {\n"
      "        super.onCreate(savedInstanceState)\n"
      "        _lvInitWindow()\n    }\n"),
     ("onStart",
-     "override fun onStart() {\n        super.onStart()\n        _lvInitWindow()\n        _lvHealStart()\n    }\n"),
+     "override fun onStart() {\n        super.onStart()\n        _lvHealStart()\n    }\n"),
     ("onResume",
-     "override fun onResume() {\n        super.onResume()\n        _lvInitWindow()\n        _lvHealStart()\n    }\n"),
+     "override fun onResume() {\n        super.onResume()\n        _lvHealStart()\n    }\n"),
     ("onWindowFocusChanged",
      "override fun onWindowFocusChanged(hasFocus: Boolean) {\n"
      "        super.onWindowFocusChanged(hasFocus)\n"
-     "        if (hasFocus) { _lvInitWindow(); _lvHealStart() }\n    }\n"),
+     "        if (hasFocus) { _lvHealStart() }\n    }\n"),
 ]
 
 
@@ -547,7 +553,10 @@ def patch(path):
                     print("::warning::lifecycle %s: cannot find closing brace, skip" % name)
                     continue
                 body = src[body_start:close]
-                needs_init = "_lvInitWindow()" not in body
+                # v2.5.6 #2：仅 onCreate 需要 _lvInitWindow()（首启设启动渐变）；
+                # onStart / onResume / onWindowFocusChanged 属「前台返回」路径，刻意不重设
+                # 渐变（零闪回），只保活桥。故幂等补调用时，非 onCreate 不补 _lvInitWindow()。
+                needs_init = (name == "onCreate") and ("_lvInitWindow()" not in body)
                 needs_heal = "_lvHealStart()" not in body
                 if needs_init or needs_heal:
                     ins = ""

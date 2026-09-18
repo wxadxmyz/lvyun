@@ -315,7 +315,7 @@ button.fav, .fav { color: var(--danger) !important; }
 /* v2.3.11 #1：旧播放页根样式 .fs-player 已随 .pv-root 退役（无对应 DOM），移除。 */
 
 /* 播放页歌词浮层（移动端点封面翻歌词） */
-.fs-lyrics-full { position: absolute; inset: 0; z-index: 6; background: var(--bg); display: flex; flex-direction: column; gap: 14px; padding: 18% 8% 12%; overflow: auto; animation: fade .15s; }
+.fs-lyrics-full { position: absolute; inset: 0; z-index: 6; background: var(--bg); display: flex; flex-direction: column; gap: 26px; padding: 18% 8% 12%; overflow: auto; animation: fade .15s; }
 .fs-lyrics-full .lyric-line { margin: 0; font-size: 18px; color: var(--muted); transition: .2s; }
 .fs-lyrics-full .lyric-line.active { color: #fff; font-size: 22px; font-weight: 700; }
 @media (min-width: 821px) { .fs-lyrics-full { display: none; } }
@@ -1129,12 +1129,12 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
    上半部分被推到滚动区之外且永远滚不回来（长歌词顶部几行够不着）。
    改成上下各一个 flex:1 占位块来撑出居中效果：内容短时两占位各占一半 → 视觉居中；
    内容长时占位被压到 0 → 从第一行到末行都能正常滚动。 */
-.ld-scroll{ flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; align-items:center; gap:16px; padding:24px 18px; }
+.ld-scroll{ flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; align-items:center; gap:26px; padding:24px 18px; }
 .ld-scroll::before, .ld-scroll::after{ content:''; flex:1 1 0; min-height:12px; }
 /* 当前行自动跟随（JS 侧 scrollIntoView，见 FullScreenPlayer）——滚动行为交给 CSS 控制，
    避免部分 WebView 上 smooth 与用户手动滑动打架。 */
 .ld-scroll{ scroll-behavior:smooth; }
-.ld-line{ margin:0; font-size:18px; line-height:1.5; color:var(--muted); text-align:center; transition:color .25s, transform .25s, opacity .25s; }
+.ld-line{ margin:0; font-size:18px; line-height:1.85; color:var(--muted); text-align:center; transition:color .25s, transform .25s, opacity .25s; }
 /* 当前行：粉紫渐变 + 加粗放大；方案 A：inline-block + fit-content 使渐变贴合文字 */
 .ld-line.active{ display:inline-block; width:fit-content; font-size:22px; font-weight:800; color:transparent; background:linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text; background-clip:text; }
 .ld-line.past{ opacity:.55; }
