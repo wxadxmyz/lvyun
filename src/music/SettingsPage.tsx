@@ -23,7 +23,7 @@ import { pushBackHandler } from '../lib/backStack';
 // 回退版本：仅在取不到 Tauri 打包版本时使用（例如在浏览器里直接调试）。
 // ⚠️ 每次发版都要同步这里：之前写死 '2.3.6'，结果 APK 已是新版本、
 //    设置页一直显示旧号；这次升到 2.4.6 时又忘了同步，浏览器调试下显示成 2.3.11。
-const FALLBACK_VERSION = '2.4.8';
+const FALLBACK_VERSION = '2.6.1';
 
 function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -233,7 +233,8 @@ export function SettingsPage({
         {/* 音源 */}
         <div className="settings-group-title">音源</div>
         <div className="settings-card">
-          <NavRow icon="download" label="导入 json 音源" value="手动地址 / 扫码" onClick={() => setSub('import')} />
+          {/* v2.6.1 A8：图标对齐 UI.html（.srow 用的是 IC.plug 插头，不是下载箭头）。 */}
+          <NavRow icon="plug" label="导入 json 音源" value="手动地址 / 扫码" onClick={() => setSub('import')} />
           <NavRow icon="music" label="音源切换" onClick={() => setSub('switch')} />
         </div>
 
@@ -269,7 +270,8 @@ export function SettingsPage({
         {/* 外观 */}
         <div className="settings-group-title">外观</div>
         <div className="settings-card">
-          <NavRow icon="sliders" label="皮肤" value={skin.name} onClick={() => setSub('skin')} />
+          {/* v2.6.1 A8：皮肤行图标对齐 UI.html（.srow 用的是 IC.palette）。 */}
+          <NavRow icon="palette" label="皮肤" value={skin.name} onClick={() => setSub('skin')} />
         </div>
 
         {/* 通用 */}
@@ -330,6 +332,24 @@ export function SettingsPage({
                 <span className={'dl-st ' + t.status}>
                   {t.status === 'done' ? '已完成' : t.status === 'error' ? (t.error || '失败') : `${t.progress}%`}
                 </span>
+                {/* v2.6.1 A8：UI.html 每个 dlrow 都带一个 🗑 移除按钮，之前漏了。
+                    已完成的任务移除只是清列表，进行中的会真正取消下载
+                    （cancel 在 store 里已实现，此前没有任何入口能触发到它）。 */}
+                <button
+                  className="dl-x"
+                  aria-label="移除任务"
+                  onClick={() => {
+                    if (t.status === 'done' || t.status === 'error') {
+                      downloadStore.remove(t.id);
+                      toast.push('已移除该任务', 'ok');
+                    } else {
+                      downloadStore.cancel(t.id);
+                      toast.push('已取消下载', 'ok');
+                    }
+                  }}
+                >
+                  <Icon name="trash" size={16} />
+                </button>
               </div>
             ))}
           </div>

@@ -13,10 +13,17 @@ export interface DownloadTask {
 let tasks: DownloadTask[] = [];
 const listeners = new Set<() => void>();
 let opts = { notifyDownload: true };
+/**
+ * v2.6.1 A8：已被用户取消的任务 id。
+ * 底层请求（Tauri sidecar / fetch）没法真正 abort，所以用「取消名单」让
+ * 迟到的进度与完成回调自行丢弃，避免取消后又冒出一个 100% 的幽灵任务。
+ */
+const _aborted = new Set<string>();
 function emit() {
   for (const l of listeners) l();
 }
 function setState(patch: Partial<DownloadTask>, id: string) {
+  if (_aborted.has(id)) return;
   tasks = tasks.map((t) => (t.id === id ? { ...t, ...patch } : t));
   emit();
 }
@@ -96,7 +103,18 @@ export const downloadStore = {
     tasks = tasks.filter((t) => t.id !== id);
     emit();
   },
-  // 清除已完成与失败的任务（isDir 假完成逻辑已移除）
+  /**
+   * v2.6.1 A8：取消一个进行中的下载。
+   *
+   * 此前 remove() 只是把任务从列表里抹掉，底层请求照跑、完成后还会回头
+   * 调 setState（那时任务已不在数组里，_aborted 标记就派上用场了）。
+   * 这里先把 id 记进 _aborted，再移除，让迟到的回调自行丢弃。
+   */
+  cancel(id: string) {
+    _aborted.add(id);
+    this.remove(id);
+  },
+  /** 清除已完成与失败的任务（isDir 假完成逻辑已移除） */
   clearDone() {
     tasks = tasks.filter((t) => t.status !== 'done' && t.status !== 'error');
     emit();

@@ -285,7 +285,19 @@ export async function aggregateArtist(
       if (typeof src.getArtistSongs !== 'function') return; // 老源不支持：跳过，不算失败
       supported++;
       try {
-        const items = await withTimeout(src.getArtistSongs(name), opts.timeout ?? 40000);
+        // v2.6.1 A3：把 opts.onPartial 透传给源（此前只传了 name，通路是断的）。
+        // 目前只有聚合源（bundle）会用 —— 它有 N 个子站，可以「子站级」渐进上屏；
+        // 单源适配器忽略第二个参数，行为完全不变。
+        // 源内部推的增量同样是**累积快照**，直接覆盖本桶即可（不是增量拼接）。
+        const items = await withTimeout(
+          src.getArtistSongs(name, (partialItems) => {
+            if (!opts.onPartial) return;
+            buckets[i] = partialItems;
+            emit();
+          }),
+          opts.timeout ?? 40000,
+        );
+        // 源不一定推最终快照（onPartial 是可选的），这里用返回值兜底覆盖
         buckets[i] = items;
         emit();
       } catch (e: any) {

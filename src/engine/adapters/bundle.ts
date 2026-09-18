@@ -252,21 +252,51 @@ export function createBundleSource(cfg: SourceConfig): MediaSource {
       return src.getLyric(typeof item === 'string' ? realId : denormalize(item, realId));
     },
 
-    async getArtistSongs(artist: string) {
+    /**
+     * v2.6.1 A3：歌手全曲加「子站级渐进上屏」。
+     *
+     * 旧实现是 Promise.all 四个子站、**没有 onPartial** —— 而同一个文件的 search()
+     * 早就实现了子站级渐进（见上方 v2.4.10 #2 的注释）。于是同样是 bundle 源：
+     *   · 搜索：谁快谁先上屏
+     *   · 歌手页：必须干等最慢的子站（酷我 / 咪咕常 8~15s）才出第一条
+     * 这就是用户反馈「搜索还行、歌手详情页特别卡」的直接原因。
+     *
+     * 现在与 search() 完全对齐：按子站下标分桶，每个子站落地就推一次累积快照。
+     */
+    async getArtistSongs(artist: string, onPartial?: (items: MediaItem[]) => void) {
       const list = await subs();
-      const results = await Promise.all(
+      const buckets: MediaItem[][] = list.map(() => []);
+
+      /** 把当前 buckets 展开成「已上屏」的列表（含 id 编码与 sourceId 改写） */
+      const collect = (): MediaItem[] => {
+        const out: MediaItem[] = [];
+        buckets.forEach((items, idx) => {
+          for (const it of items) out.push(wrapItem(it, idx, list, cfg));
+        });
+        return out;
+      };
+
+      await Promise.all(
         list.map(async (sub, idx) => {
           const s = createSource(sub);
-          if (typeof s.getArtistSongs !== 'function') return [] as MediaItem[];
-          try {
-            const items = await s.getArtistSongs(artist);
-            return items.map((it) => ({ ...it, id: wrapId(idx, it.id), sourceId: cfg.id }));
-          } catch {
-            return [] as MediaItem[];
+          if (typeof s.getArtistSongs !== 'function') {
+            buckets[idx] = [];
+          } else {
+            try {
+              const items = await s.getArtistSongs(artist);
+              buckets[idx] = items.map((it) => ({ ...it, id: wrapId(idx, it.id), sourceId: cfg.id }));
+            } catch {
+              buckets[idx] = []; // 单个子站挂了不影响其它子站
+            }
+          }
+          // 每个子站落地就推一次增量 —— 先回来的子站先上屏
+          if (onPartial) {
+            try { onPartial(collect()); } catch { /* 回调异常不该影响取数 */ }
           }
         })
       );
-      return results.flat();
+
+      return collect();
     },
 
     async test() {

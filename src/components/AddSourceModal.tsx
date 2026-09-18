@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SOURCE_TYPES, SourceType } from '../engine';
 import { SourceForm } from '../store';
+// v2.6.1 A6-2：返回键栈式调度
+import { pushBackHandler } from '../lib/backStack';
 
 export function AddSourceModal({
   onSubmit,
@@ -16,6 +18,18 @@ export function AddSourceModal({
   const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? '');
   const [token, setToken] = useState(initial?.token ?? '');
   const [mountPath, setMountPath] = useState(initial?.mountPath ?? '/');
+
+  // v2.6.1 A6-2：自行登记返回键。
+  //
+  // 这是「二级页面里的浮层没登记」的典型缺陷：此前没有 pushBackHandler，
+  // 系统返回键会直接关掉**整个设置子页**，把用户正在编辑的 url / token / 挂载路径
+  // 一起丢掉 —— 而用户的心理预期显然是「先关这个编辑框」。
+  useEffect(() => {
+    return pushBackHandler(() => {
+      onClose();
+      return true;
+    });
+  }, [onClose]);
 
   const PLACEHOLDER: Record<SourceType, string> = {
     'music-json': 'https://your-music-api.com',

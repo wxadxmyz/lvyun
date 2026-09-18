@@ -4,6 +4,8 @@ import { useLibrary } from '../../lib/library';
 import { usePlayback } from '../../lib/playback';
 import { Icon } from '../../components/Icon';
 import { pushBackHandler } from '../../lib/backStack';
+// v2.6.1 A9-3：行列 ⋮ 菜单复用搜索结果页的同一个组件
+import { SearchTrackMenu } from '../../components/SearchTrackMenu';
 import { ToplistItem } from '../../lib/toplists';
 // v2.4.1 #I：榜单结果同样标记源指纹，保证换源后播放能走新源
 import { markSourceRev } from '../../player';
@@ -30,6 +32,8 @@ export function ToplistDetail({
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searched, setSearched] = useState(false);
+  // v2.6.1 A9-3：行尾 ⋮ 菜单当前作用的歌曲（null = 关闭）
+  const [menuItem, setMenuItem] = useState<MediaItem | null>(null);
 
   // v2.4.0 I1：用榜单 keyword 去搜「用户自己的音源」，结果即该榜单歌曲（App 不存不分发）
   useEffect(() => {
@@ -60,6 +64,13 @@ export function ToplistDetail({
   // 左上返回 + 系统返回键统一走 onClose（栈式返回）；返回 true 表示已消费
   useEffect(() => pushBackHandler(() => { onClose(); return true; }), [onClose]);
 
+  // v2.6.1 A9-3：⋮ 菜单的返回键登记 —— 返回应先关菜单，再退榜单页。
+  // 菜单后挂载在栈顶，所以它的 handler 会先被问到（与 MyMusicModal 的写法一致）。
+  useEffect(() => {
+    if (!menuItem) return;
+    return pushBackHandler(() => { setMenuItem(null); return true; });
+  }, [menuItem]);
+
   const groups = items.reduce<Record<string, MediaItem[]>>((acc, it) => {
     (acc[it.sourceName] ??= []).push(it);
     return acc;
@@ -85,18 +96,38 @@ export function ToplistDetail({
             <div className="track-list">
               {list.map((it, i) => (
                 <div className="track-row" key={it.sourceId + it.id} onClick={() => playback.play(it, list, i)}>
+                  {/* v2.6.1 A9-3：行首序号徽标（UI.html .ix / .ix.hot），前 3 名高亮 */}
+                  <span className={'tix' + (i < 3 ? ' hot' : '')}>{i + 1}</span>
                   <span className="tcover" style={{ background: `linear-gradient(140deg, ${item.color?.[0] ?? '#ff5e99'}, ${item.color?.[1] ?? '#ff8a4c'})` }}>
                     {it.cover ? <img src={it.cover} alt="" /> : (item.initial ?? it.title.slice(0, 1))}
                   </span>
                   <span className="ttitle">{it.title}</span>
                   <span className="tsub">{it.artist ?? it.year ?? ''}</span>
                   <span className="tsrc">{it.sourceName}</span>
+                  {/* v2.6.1 A9-3：行尾 ⋮ 菜单（UI.html .mini rowmenu）。复用搜索结果行
+                      同一个 SearchTrackMenu，交互完全一致。 */}
+                  <span className="tactions" onClick={(e) => e.stopPropagation()}>
+                    <button className="ico" title="更多" aria-label="更多" onClick={() => setMenuItem(it)}>
+                      <Icon name="more-vertical" size={18} />
+                    </button>
+                  </span>
                 </div>
               ))}
             </div>
           </div>
         ))}
       </div>
+
+      {/* v2.6.1 A9-3：行尾 ⋮ 菜单浮层（与搜索结果页共用同一组件） */}
+      {menuItem && (
+        <SearchTrackMenu
+          item={menuItem}
+          sources={sources}
+          library={library}
+          onPlay={(it) => playback.play(it, items, items.findIndex((x) => x.id === it.id && x.sourceId === it.sourceId))}
+          onClose={() => setMenuItem(null)}
+        />
+      )}
     </div>
   );
 }

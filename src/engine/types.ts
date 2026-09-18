@@ -105,8 +105,20 @@ export interface MediaSource {
    * 与 aggregateSearch 拿「搜索结果冒充作品库」不同，这是源提供的真实歌手作品库
    * （酷狗 v2 源实测：许嵩 256 首 / 周杰伦 353 首，且封面 100%）。
    * 源未实现时上层回退为按歌手名聚合搜索。
+   *
+   * v2.6.1 A3：第二参数 onPartial 与 search 同语义 ——「子站级渐进渲染」通道。
+   *
+   * 补它的原因：搜索路径（search）早就有了这条通道，但歌手路径一直只有 Promise.all ——
+   * 于是同样是 bundle 源，搜索能「谁快谁先上屏」，歌手页却必须干等**最慢的子站**
+   * （酷我 / 咪咕常 8~15s）才出第一条。这就是「搜索还行、歌手页特别卡」的直接原因。
+   *
+   * 回调里给出的 items 同样是**累积快照**，调用方整体替换即可。
+   * 单源适配器忽略此参数即可（它们本来一次请求就出全部结果）。
    */
-  getArtistSongs?(artist: string): Promise<MediaItem[]>;
+  getArtistSongs?(
+    artist: string,
+    onPartial?: (items: MediaItem[]) => void,
+  ): Promise<MediaItem[]>;
   /**
    * v2.4.9 #1.3/#1.5.6：详情通道（封面回填用）。
    * 参数兼容两种调用：传完整 MediaItem（**推荐**，源的 detail 常要靠歌名+歌手

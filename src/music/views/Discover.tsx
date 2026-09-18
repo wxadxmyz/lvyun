@@ -148,6 +148,29 @@ export function Discover({
         </section>
       )}
 
+      {/* v2.6.1 A9-1：为你推荐 —— 补回 UI.html 的 .cards 2 列卡片区。
+          数据从榜单派生（取前 4 个榜单做成推荐卡），不新增网络请求。
+          点击同样用榜单的 keyword 去搜用户自己的音源。 */}
+      {toplists && toplists.length > 0 && (
+        <section className="cards-section">
+          <div className="row-head"><h3>为你推荐</h3></div>
+          <div className="cards">
+            {toplists.slice(0, 4).map((t) => {
+              const [c1, c2] = t.color && t.color.length === 2 ? t.color : ['#ff5e99', '#ff8a4c'];
+              return (
+                <button key={'rec-' + t.id} className="card" onClick={() => setActive(t)}>
+                  <span className="cv" style={{ background: `linear-gradient(140deg, ${c1}, ${c2})` }}>
+                    <Icon name="music" size={26} />
+                  </span>
+                  <span className="t">{t.name}</span>
+                  {t.desc && <span className="s">{t.desc}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {active && (
         <ToplistDetail
           item={active}

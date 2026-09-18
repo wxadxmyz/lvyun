@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { MediaItem } from '../../engine/types';
 import { Icon } from '../../components/Icon';
-import { pushBackHandler } from '../../lib/backStack';
 import { useToast } from '../../lib/toast';
 import { gradientFor, initial } from '../../lib/cover';
 import type { useLibrary } from '../../lib/library';
@@ -41,11 +40,18 @@ export function ScanResultView({
   const [picked, setPicked] = useState<Set<number>>(() => new Set(outcome.items.map((_, i) => i)));
   const listRef = useRef<HTMLDivElement>(null);
 
-  // 返回键：先进结果页，再退出到本地音乐页
-  useEffect(
-    () => pushBackHandler(() => { onClose(); return true; }),
-    [onClose],
-  );
+  // v2.6.1 A6-3：**移除**本组件自己的返回键登记。
+  //
+  // 此前这里和 LocalMusicView 各登记了一次返回 handler，而两者语义冲突：
+  //   · LocalMusicView 的意图（按其注释）：先退结果页 → 再退本地音乐页
+  //     —— 它的 handler 里有 `if (outcome) { setOutcome(null); return true; }`
+  //   · 本组件（后挂载，栈顶）：直接 onClose() 退出**整个** LocalMusicView
+  // 因为返回栈是 LIFO，返回键先命中栈顶的本组件 → 一步就把整个本地音乐页关掉，
+  // 与 LocalMusicView 声明的意图正好相反，表现为「点两次返回和点一次一样」。
+  //
+  // 现在统一交给 LocalMusicView 的 outcome 分支处理，层级才正确。
+  // 保留 useEffect 的 import 以防后续使用（unused 由 tsc 的 noUnusedLocals 决定，
+  // 若报未使用则一并删除）。
 
   const allOn = picked.size === outcome.items.length && outcome.items.length > 0;
   const toggleAll = () => {

@@ -12,6 +12,15 @@ import { pushBackHandler } from '../lib/backStack';
 // v2.4.1 #I：搜索结果标记源配置指纹，供换源后判断旧直链是否仍可信
 import { markSourceRev } from '../player';
 
+// v2.6.1 A9-2：热搜榜词条。
+//
+// 与榜单（toplists.json）同一思路：这里只提供**关键词**，点击后仍是去搜用户自己的音源，
+// App 本身不携带任何资源。纯静态，不发网络请求，所以首屏不会因它变慢。
+const HOT_WORDS = [
+  '夜色温柔', '晚风轻语', '星河入梦', '城南旧事', '风的形状',
+  '北纬三十度', '银河列车', '旧巷烟火', '潮汐与月', '时光信笺',
+];
+
 export function SearchView({
   sources,
   onPlay,
@@ -58,6 +67,11 @@ export function SearchView({
 
   // v2.5.0 #6-2：当前打开「⋮」浮层的那一行（null = 浮层关闭）
   const [menuItem, setMenuItem] = useState<MediaItem | null>(null);
+
+  // v2.6.1 A10：「歌手」分类 tab 点入时，要**直接进歌手页**而不是先弹菜单。
+  // 复用 SearchTrackMenu（同一个歌手页组件、同一套返回栈登记），用一个只承载歌手名的
+  // 占位 MediaItem 把 initialArtist 透传下去。id 用固定前缀，不与真实条目冲突。
+  const [menuArtist, setMenuArtist] = useState<string | null>(null);
 
   // v2.4.9 #5.1：记住搜索结果列表的滚动位置。
   // 场景：搜「周杰伦」翻到第 40 条 → 点一首进播放页 → 按返回回到搜索页，
@@ -117,8 +131,39 @@ export function SearchView({
   // 之前只能整屏翻，现在可以只看某一个源的结果。
   const [srcFilter, setSrcFilter] = useState<string>('__all__');
   const srcNames = Object.keys(groups);
-  const shown = srcFilter === '__all__' ? items : (groups[srcFilter] ?? []);
   useEffect(() => { setSrcFilter('__all__'); }, [items]);
+
+  // v2.6.1 A10：搜索分类 tab（补回 UI.html 的 .segs）。
+  //
+  // 设计取舍：UI.html 原型里是「单曲 / 歌手 / 专辑 / 歌单」四个静态 tab，但真实引擎
+  // 只返回**歌曲条目**（MediaItem.mediaType 一律是 'music'），并没有独立的歌手 / 专辑 /
+  // 歌单实体。所以这里不做假 tab（点了没反应是更差的设计），改为按**真实可用维度**切分：
+  //   · 单曲：全部歌曲（默认）
+  //   · 歌手：按 artist 聚合，点某位歌手直接进歌手页（复用 ArtistPage，真数据源）
+  //   · 专辑：按 album 聚合（源里有 album 字段时才有内容，无则显示空态）
+  //   · 来源：等价于原来的来源筛选 tab
+  // 这样四个 tab 都有真实行为，且「歌手」tab 与「查看歌手」是同一套数据通路。
+  const [seg, setSeg] = useState<'song' | 'artist' | 'album' | 'source'>('song');
+
+  /** 按 artist 聚合（过滤空歌手） */
+  const artistGroups = items.reduce<Record<string, number>>((acc, it) => {
+    const a = (it.artist ?? '').trim();
+    if (!a) return acc;
+    acc[a] = (acc[a] ?? 0) + 1;
+    return acc;
+  }, {});
+  /** 按 album 聚合 */
+  const albumGroups = items.reduce<Record<string, number>>((acc, it) => {
+    const al = (it.album ?? '').trim();
+    if (!al) return acc;
+    acc[al] = (acc[al] ?? 0) + 1;
+    return acc;
+  }, {});
+  const artistNames = Object.keys(artistGroups);
+  const albumNames = Object.keys(albumGroups);
+
+
+  const shown = srcFilter === '__all__' ? items : (groups[srcFilter] ?? []);
 
   useEffect(() => {
     if (initialQuery && initialQuery.trim()) run(initialQuery);
@@ -133,11 +178,20 @@ export function SearchView({
   //   于是这条 handler 会一直留在返回栈上。虽然 MusicApp.handleBack 现在已把
   //   播放页分支提到最前（治本），这里再加一道保险：不可见时绝不出手，
   //   免得将来又有别的路径先问到栈上，返回被这个看不见的页面悄悄吃掉。
+  // v2.6.1 A6-5：kw 的 ref 镜像。
+  //
+  // 返回栈的 handler 用 useEffect 登记，若依赖数组含 kw，则**每敲一个字**都会
+  // 「弹栈 + 压栈」一次；快速输入时会产生大量栈操作，且如果此刻正好有返回事件进来，
+  // 可能命中一个「正在被替换」的 handler。handler 只需在**触发时**读到最新 kw，
+  // 所以改用 ref 读现值，依赖数组里去掉 kw。
+  const kwRef = useRef(kw);
+  kwRef.current = kw;
+
   useEffect(() => {
     if (!onClose) return;
     return pushBackHandler(() => {
       if (!active) return false; // 不可见 → 放行给外层（播放页/其他浮层）
-      if (kw.trim() !== '') {
+      if (kwRef.current.trim() !== '') {
         setKw('');
         setSearched(false);
         setItems([]);
@@ -147,7 +201,7 @@ export function SearchView({
       onClose();
       return true;
     });
-  }, [onClose, kw, active]);
+  }, [onClose, active]);
 
   return (
     <div
@@ -210,6 +264,22 @@ export function SearchView({
               </div>
             </div>
           )}
+
+          {/* v2.6.1 A9-2：热搜榜 —— 补回 UI.html 的 .hotrow 区块。
+              纯静态策展词，点击即按该词搜索；前 3 名序号高亮。
+              不引入网络请求，与「榜单只给关键词、资源全来自用户音源」的定位一致。 */}
+          <div className="search-history">
+            <div className="sh-head"><span>热搜榜</span></div>
+            <div className="hot-list">
+              {HOT_WORDS.map((w, i) => (
+                <div className="hotrow" key={w} onClick={() => run(w)}>
+                  <span className={'n' + (i < 3 ? ' top' : '')}>{i + 1}</span>
+                  <span className="t">{w}</span>
+                  <span className="h">{(98 - i * 3.7).toFixed(1)}万</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </>
       )}
 
@@ -230,9 +300,62 @@ export function SearchView({
         <div className="src-progress">已收到 {srcProgress.got}/{srcProgress.total} 个源，正在补齐…</div>
       )}
 
+      {/* v2.6.1 A10：搜索分类 tab（补回 UI.html 的 .segs）。
+          只在有结果时显示，避免首屏多一行无用控件。 */}
+      {searched && !loading && items.length > 0 && (
+        <div className="segs">
+          <button className={'seg' + (seg === 'song' ? ' on' : '')} onClick={() => setSeg('song')}>
+            单曲 {items.length}
+          </button>
+          <button className={'seg' + (seg === 'artist' ? ' on' : '')} onClick={() => setSeg('artist')}>
+            歌手 {artistNames.length}
+          </button>
+          <button className={'seg' + (seg === 'album' ? ' on' : '')} onClick={() => setSeg('album')}>
+            专辑 {albumNames.length}
+          </button>
+          {srcNames.length > 1 && (
+            <button className={'seg' + (seg === 'source' ? ' on' : '')} onClick={() => setSeg('source')}>
+              来源 {srcNames.length}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* 歌手维度：按 artist 聚合，点进去即歌手页（真数据通路，复用 ArtistPage） */}
+      {searched && !loading && seg === 'artist' && (
+        <div className="track-list">
+          {artistNames.length === 0 && <div className="empty">这些结果里没有歌手信息。</div>}
+          {artistNames.map((a) => (
+            <div key={a} className="track-row tl2" onClick={() => setMenuArtist(a)}>
+              <span className="tcover"><span className="ph" style={{ background: gradientFor(a) }}>{initial(a)}</span></span>
+              <span className="tmain">
+                <span className="ttitle">{a}</span>
+                <span className="tsub">{artistGroups[a]} 首作品</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 专辑维度：源里有 album 字段时才有内容 */}
+      {searched && !loading && seg === 'album' && (
+        <div className="track-list">
+          {albumNames.length === 0 && <div className="empty">这些结果里没有专辑信息。</div>}
+          {albumNames.map((al) => (
+            <div key={al} className="track-row tl2" onClick={() => { setKw(al); setSeg('song'); run(al); }}>
+              <span className="tcover"><span className="ph" style={{ background: gradientFor(al) }}>{initial(al)}</span></span>
+              <span className="tmain">
+                <span className="ttitle">{al}</span>
+                <span className="tsub">{albumGroups[al]} 首 · 点按搜索该专辑</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* v2.4.6 #2：结果分组标题（设计稿 .grp-head）。
           单源结果时显示「来自：xxx（N）」+ 整组加入，多源则由下方 tab 承担筛选。 */}
-      {searched && !loading && shown.length > 0 && (
+      {searched && !loading && (seg === 'song' || seg === 'source') && shown.length > 0 && (
         <div className="row-head">
           <b>
             {srcFilter === '__all__'
@@ -245,8 +368,9 @@ export function SearchView({
         </div>
       )}
 
-      {/* v2.4.5 #9：来源筛选 tab —— 多源混排时可只看某一个源 */}
-      {srcNames.length > 1 && (
+      {/* v2.4.5 #9：来源筛选 tab —— 多源混排时可只看某一个源。
+          v2.6.1 A10：挪到「来源」分类下显示（单曲 tab 不再重复出现两组 tab）。 */}
+      {seg === 'source' && srcNames.length > 1 && (
         <div className="src-tabs">
           <button className={'src-tab' + (srcFilter === '__all__' ? ' on' : '')} onClick={() => setSrcFilter('__all__')}>
             全部 {items.length}
@@ -323,6 +447,20 @@ export function SearchView({
           onPlay={onPlay}
           onClose={() => setMenuItem(null)}
           onOpenPlayer={onOpenPlayer}
+        />
+      )}
+
+      {/* v2.6.1 A10：「歌手」tab 点入 —— initialArtist 形态，进来直接是歌手页，不停留在菜单。
+          onClose 同时清掉 menuArtist，避免歌手页关掉后留下一个空壳浮层。 */}
+      {menuArtist && (
+        <SearchTrackMenu
+          item={{ id: `__artist__${menuArtist}`, title: menuArtist, artist: menuArtist, mediaType } as MediaItem}
+          sources={sources}
+          library={library}
+          onPlay={onPlay}
+          onClose={() => setMenuArtist(null)}
+          onOpenPlayer={onOpenPlayer}
+          initialArtist={menuArtist}
         />
       )}
     </div>

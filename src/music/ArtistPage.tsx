@@ -34,13 +34,45 @@ type Props = {
  *   ③ 一条都没取到才回退「按歌手名聚合搜索」；
  *   ④ 全程「只增不改」，避免列表整体替换导致点第 2 行播第 1 行。
  */
+// v2.6.1 A8：关注状态持久化。
+//
+// 旧实现点了「关注」只弹一个 toast，关掉页面就没了 —— 和「私信」一样是假交互，
+// 区别只是它至少可以做成真实状态。这里用 localStorage 持久化「已关注的歌手集合」，
+// 让这个按钮真正有意义（后续想做「我的关注」列表也有据可依）。
+const FOLLOW_KEY = 'lvyun_followed_artists';
+
+function readFollowed(artist: string): boolean {
+  try {
+    const arr = JSON.parse(localStorage.getItem(FOLLOW_KEY) ?? '[]');
+    return Array.isArray(arr) && arr.includes(artist);
+  } catch {
+    return false;
+  }
+}
+
+function writeFollowed(artist: string, on: boolean) {
+  try {
+    const raw = localStorage.getItem(FOLLOW_KEY);
+    let arr: string[] = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(arr)) arr = [];
+    arr = arr.filter((x) => x !== artist);
+    if (on) arr.push(artist);
+    localStorage.setItem(FOLLOW_KEY, JSON.stringify(arr));
+  } catch {
+    /* 配额 / 隐私模式：只影响持久化，不影响当前会话 */
+  }
+}
+
 export default function ArtistPage({ artist, sources, queue, onPlay, onClose, onOpenPlayer }: Props) {
   const toast = useToast();
   const [tracks, setTracks] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(false);
   const PAGE_SIZE = 60;
   const [shown, setShown] = useState(PAGE_SIZE);
-
+  // v2.6.1 A8：头部「更多」浮层 + 关注状态（持久化）
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [followed, setFollowed] = useState(false);
+  useEffect(() => { setFollowed(readFollowed((artist ?? '').trim())); }, [artist]);
   useEffect(() => { setShown(PAGE_SIZE); }, [artist]);
 
   useEffect(() => {
@@ -100,13 +132,33 @@ export default function ArtistPage({ artist, sources, queue, onPlay, onClose, on
 
   return (
     <div className="fs-author">
+      {/* v2.6.1 A8：头部结构对齐 UI.html 的 .ahead ——「返回 + 标题/副标题 + 更多」一行式，
+          替代旧版「返回 + 大圆头像」的分离布局。 */}
       <div className="fs-author-head">
         <button className="icon" onClick={onClose} aria-label="返回"><Icon name="arrow-left" /></button>
-        <div className="fs-author-ava">{(artist ?? '?').slice(0, 1)}</div>
+        <div className="fs-author-tt">
+          <div className="n">{artist || '未知艺术家'}</div>
+          <div className="s">{loading ? '正在获取作品…' : `原创音乐人 · ${tracks.length} 首作品`}</div>
+        </div>
+        {/* v2.6.1 A8：补「更多」按钮（UI.html .ahead 的第三个按钮）。 */}
+        <button className="icon" onClick={() => setMoreOpen((v) => !v)} aria-label="更多操作"><Icon name="more" /></button>
       </div>
-      <div className="fs-author-info">
-        <div className="fs-author-name">{artist || '未知艺术家'}</div>
-        <div className="fs-author-bio">原创音乐人 · 在律云与你相遇</div>
+      {moreOpen && (
+        <div className="fs-author-more">
+          <button onClick={() => { setMoreOpen(false); onPlay(tracks, 0); }} disabled={!tracks.length}>
+            <Icon name="play" size={16} /> 播放全部
+          </button>
+          <button onClick={() => { setMoreOpen(false); setShown(tracks.length); }} disabled={!tracks.length}>
+            <Icon name="list" size={16} /> 展开全部
+          </button>
+        </div>
+      )}
+      <div className="fs-author-hero">
+        <div className="fs-author-ava">{(artist ?? '?').slice(0, 1)}</div>
+        <div className="fs-author-who">
+          <div className="nm">{artist || '未知艺术家'}</div>
+          <div className="bio">在律云与你相遇 · 原创音乐人</div>
+        </div>
       </div>
       <div className="fs-author-stats">
         {/* 加载中固定显示「—」：渐进追加期间数字跳动会误导用户以为点错了 */}
@@ -114,9 +166,21 @@ export default function ArtistPage({ artist, sources, queue, onPlay, onClose, on
         <div><div className="n">—</div><div className="t">粉丝</div></div>
         <div><div className="n">—</div><div className="t">关注</div></div>
       </div>
+      {/* v2.6.1 A8：「私信」按钮已删除 —— 律云是聚合播放器，没有账号 / 消息体系，
+          点了只弹一个 toast 说「已发送私信」，是纯占位假交互，会误导用户。
+          「关注」保留并改为 localStorage 持久化，这样它至少是有意义的本地状态。 */}
       <div className="fs-author-acts">
-        <button className="fs-pill primary2" onClick={() => { toast.push('已关注'); }}>关注</button>
-        <button className="fs-pill" onClick={() => toast.push('已发送私信')}>私信</button>
+        <button
+          className={'fs-pill' + (followed ? ' primary2' : '')}
+          onClick={() => {
+            const next = !followed;
+            setFollowed(next);
+            writeFollowed(artist, next);
+            toast.push(next ? `已关注 ${artist}` : `已取消关注 ${artist}`);
+          }}
+        >
+          {followed ? '已关注' : '关注'}
+        </button>
       </div>
       <div className="fs-author-sec">热门作品</div>
       <div className="fs-author-tracks">
@@ -153,6 +217,19 @@ export default function ArtistPage({ artist, sources, queue, onPlay, onClose, on
               <span className="at-name">{q.title}</span>
               <span className="at-sub">{[q.artist, q.sourceName].filter(Boolean).join(' · ')}</span>
             </span>
+            {/* v2.6.1 A8：补行内播放按钮（UI.html .arow .p），与历史页 .tactions 的交互一致。 */}
+            <button
+              className="at-play"
+              title="播放"
+              aria-label="播放"
+              onClick={(e) => {
+                e.stopPropagation();
+                const idx = tracks.findIndex((x) => x.sourceId === q.sourceId && x.id === q.id);
+                onPlay(tracks, idx < 0 ? i : idx);
+              }}
+            >
+              <Icon name="play" size={16} />
+            </button>
           </div>
         ))}
         {!loading && tracks.length > shown && (

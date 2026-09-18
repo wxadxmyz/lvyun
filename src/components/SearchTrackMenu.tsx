@@ -17,6 +17,14 @@ type Props = {
   onClose: () => void;
   /** v2.5.5 #3：歌手详情页内嵌迷你条「打开播放器」的行为（关歌手页+关浮层+切 player tab），由上层透传 */
   onOpenPlayer?: () => void;
+  /**
+   * v2.6.1 A10：直接以「查看歌手」形态打开（跳过菜单，直奔歌手页）。
+   *
+   * 用途：搜索结果的「歌手」分类 tab 里，点某位歌手应当**直接进歌手页**，
+   * 而不是先弹一个「喜欢/下一首/加歌单…」的菜单再让用户二次点「查看歌手」。
+   * 这里复用同一个组件而不是另写一套，是为了保证「歌手页从哪进都是同一个」。
+   */
+  initialArtist?: string;
 };
 
 /**
@@ -26,12 +34,13 @@ type Props = {
  *   喜欢 / 下一首播放 / 添加到歌单 / 下载 / 查看歌手（无分享）。
  * 「添加到歌单」展开歌单选择；「查看歌手」展开该歌手歌曲 sheet。
  */
-export function SearchTrackMenu({ item, sources, library, onPlay, onClose, onOpenPlayer }: Props) {
+export function SearchTrackMenu({ item, sources, library, onPlay, onClose, onOpenPlayer, initialArtist }: Props) {
   // 子视图状态：null=主菜单；'playlist'=歌单选择
   // v2.5.2 #10：'artist' 视图删掉 —— 原来是在这个小 sheet 里塞简版列表，
   // 与播放器页的完整歌手主页不是一个东西。现在统一打开公共组件 ArtistPage。
   const [view, setView] = useState<'main' | 'playlist'>('main');
-  const [artistPage, setArtistPage] = useState<string | null>(null);
+  // v2.6.1 A10：initialArtist 存在时（歌手 tab 点入）直接打开歌手页，不停留在菜单
+  const [artistPage, setArtistPage] = useState<string | null>(initialArtist ?? null);
 
   const fav = library.isFavorite(item);
 
@@ -56,6 +65,12 @@ export function SearchTrackMenu({ item, sources, library, onPlay, onClose, onOpe
     setArtistPage(item.artist);
   };
 
+  // v2.6.1 A10：歌手 tab 点入时（initialArtist 形态）进来的就是歌手页，
+  // 不该再渲染底下那层「喜欢 / 下一首 / 加歌单…」菜单 ——
+  // 它虽然被歌手页盖住了，但会被无障碍树读到、也会在关页瞬间闪一下。
+  // 判定：有 initialArtist 且 artistPage 还开着 → 菜单整体不渲染。
+  const artistOnly = !!initialArtist && !!artistPage;
+
   // v2.5.5 #3：歌手详情页打开期间，系统返回先关歌手页，再按才放行给搜索页返回
   // （否则返回事件被底层 SearchView 的 handler 消费，直接关掉整个搜索浮层 → 像回主页）。
   useEffect(() => {
@@ -68,7 +83,8 @@ export function SearchTrackMenu({ item, sources, library, onPlay, onClose, onOpe
 
 
   return createPortal(
-    <div className="fs-menu-mask" onClick={onClose}>
+    <div className="fs-menu-mask" onClick={artistOnly ? undefined : onClose}>
+      {!artistOnly && (
       <div className="fs-sheet search-track-menu" onClick={(e) => e.stopPropagation()}>
         <div className="fs-sheet-grip" />
 
@@ -133,6 +149,7 @@ export function SearchTrackMenu({ item, sources, library, onPlay, onClose, onOpe
         )}
 
       </div>
+      )}
 
       {/* v2.5.2 #10：歌手主页（与播放器页「查看作者」同一个组件）。
           挂在 sheet 之外、mask 之内，铺满全屏盖住底部 sheet。 */}

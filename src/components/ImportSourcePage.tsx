@@ -1,9 +1,11 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSources } from '../store';
 import { SubPage } from './SubPage';
 import { fetchFromUrl, parsePasted } from '../lib/sourceFetch';
 import { isValidShareCode, decodeSources } from '../lib/sharecode';
 import { Icon } from './Icon';
+// v2.6.1 A6-1：返回键栈式调度
+import { pushBackHandler } from '../lib/backStack';
 
 // 「导入 json 源 / 导入 json 音源」全屏子页：配置地址自动抓取 + 本地文件 + 手动粘贴。
 // 取代旧版的弹窗式导入。
@@ -24,6 +26,20 @@ export function ImportSourcePage({
   const [loading, setLoading] = useState(false);
   const [links, setLinks] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // v2.6.1 A6-1：自行登记返回键。
+  //
+  // 此前这个页面没有 pushBackHandler，靠父层 SettingsPage 那条 `if (!sub) return;`
+  // 的通用 handler 兜住 —— 功能上「不会退 App」，但语义是错的：走的是「关闭设置子页」
+  // 这条通用逻辑，而不是本页面自己的返回逻辑。本页已有 status / links（扫码结果）等
+  // 内部状态，一旦后续再加内部层级就会重演 backStack.ts 注释里描述的旧病：
+  // 内部状态被无视，一步跳回第一层。
+  useEffect(() => {
+    return pushBackHandler(() => {
+      onClose();
+      return true;
+    });
+  }, [onClose]);
 
   // v2.4.0 A2：从「配置地址」导入时写入 subUrl（标记为可刷新订阅源）；手动粘贴/文件/分享码无 subUrl
   const doImport = (sources: any[], subUrl?: string) => {

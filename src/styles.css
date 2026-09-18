@@ -174,9 +174,40 @@ button.fav, .fav { color: var(--danger) !important; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tl-card .ts { display: block; margin-top: 4px; font-size: 11.5px; color: var(--muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ==========================================================================
+   v2.6.1 A9-1：主页「为你推荐」卡片区（补回 UI.html 的 .cards）
+   --------------------------------------------------------------------------
+   UI.html 的 home 在热门榜单之下还有一整块 2 列卡片区（封面 + 集名 + 歌手）。
+   数据从榜单派生（取前 4 个），不新增网络请求；点击同样用榜单 keyword 搜用户音源。
+   ========================================================================== */
+.cards-section { margin-top: 22px; }
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
+.card { border: none; cursor: pointer; text-align: left; padding: 0; background: transparent;
+  color: var(--text); display: flex; flex-direction: column; gap: 8px;
+  transition: transform .2s var(--spring, ease); }
+.card:active { transform: scale(.955); }
+.card .cv { aspect-ratio: 1; width: 100%; border-radius: 18px; display: grid; place-items: center;
+  color: rgba(255,255,255,.92);
+  box-shadow: 0 10px 26px -12px rgba(0,0,0,.6), 0 1px 0 rgba(255,255,255,.06) inset; }
+.card .t { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .s { font-size: 11.5px; color: var(--muted); margin-top: -4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* v2.6.1 A9-2：搜索页「热搜榜」（补回 UI.html 的 .hotrow） */
+.hot-list { margin-top: 10px; }
+.hotrow { display: flex; align-items: center; gap: 12px; padding: 11px 4px; cursor: pointer; border-radius: 10px; }
+.hotrow:hover { background: var(--panel2); }
+.hotrow .n { width: 22px; flex: 0 0 auto; text-align: center; font-size: 14px; font-weight: 700; color: var(--muted); }
+.hotrow .n.top { color: var(--accent); }
+.hotrow .t { flex: 1; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hotrow .h { flex: 0 0 auto; font-size: 11.5px; color: var(--faint, var(--muted)); }
+
+/* v2.6.1 A9-3：榜单详情行首序号徽标（UI.html .ix / .ix.hot） */
+.track-row .tix { width: 22px; flex: 0 0 auto; text-align: center; font-size: 13px; font-weight: 700; color: var(--muted); }
+.track-row .tix.hot { color: var(--accent); }
+
 /* 榜单详情页头部：榜名 + 副标题 */
-.fp-head { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.fp-head h3 { margin: 0; font-size: 17px; }
+.fp-head { min-width: 0; display: flex; flex-direction: column; gap: 2px; }.fp-head h3 { margin: 0; font-size: 17px; }
 .fp-desc { font-size: 12px; color: var(--muted); }
 .mini-cover { position: relative; aspect-ratio: 1; border-radius: 9px; overflow: hidden; background: var(--panel2); display: grid; place-items: center; font-size: 30px; color: #fff; }
 .mini-cover img { width: 100%; height: 100%; object-fit: cover; }
@@ -1048,8 +1079,23 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 
 /* ============ 作者主页（完整页面）============ */
 .fs-author{ position:absolute; inset:0; z-index:9; display:flex; flex-direction:column; overflow:auto; overscroll-behavior-x:none; overflow-x:hidden; background:linear-gradient(180deg,#1a1018 0%, var(--bg) 55%); animation:fade .2s; padding-bottom:calc(56px + var(--sab) + 12px); }
-.fs-author-head{ position:relative; padding:calc(12px + var(--sat)) 16px 0; }
-.fs-author-ava{ width:88px; height:88px; border-radius:50%; margin:18px auto 0; background:linear-gradient(135deg,var(--accent),var(--accent2)); display:grid; place-items:center; color:#fff; font-size:36px; font-weight:800; box-shadow:0 12px 30px rgba(255,92,138,.4); }
+/* v2.6.1 A8：头部改为 UI.html .ahead 式一行三栏（返回 / 标题+副标题 / 更多） */
+.fs-author-head{ position:relative; display:flex; align-items:center; gap:12px; padding:calc(12px + var(--sat)) 16px 0; }
+.fs-author-tt{ flex:1; min-width:0; }
+.fs-author-tt .n{ font-size:20px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fs-author-tt .s{ font-size:12px; color:var(--muted); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* v2.6.1 A8：头部「更多」浮层（播放全部 / 展开全部） */
+.fs-author-more{ position:absolute; right:14px; top:calc(52px + var(--sat)); z-index:12; min-width:150px; padding:6px; border-radius:12px; background:var(--panel); border:1px solid var(--border); box-shadow:0 10px 30px rgba(0,0,0,.4); display:flex; flex-direction:column; gap:2px; animation:pop .14s ease; }
+.fs-author-more button{ display:flex; align-items:center; gap:10px; padding:10px 12px; border:none; border-radius:9px; background:transparent; color:var(--text); font-size:14px; text-align:left; cursor:pointer; }
+.fs-author-more button:hover{ background:var(--panel2); }
+.fs-author-more button:disabled{ opacity:.45; cursor:default; }
+/* v2.6.1 A8：头像区改为 UI.html .ahero 式「左头像 + 右名字简介」横向布局 */
+.fs-author-hero{ display:flex; align-items:center; gap:14px; padding:18px 22px 0; }
+.fs-author-ava{ width:72px; height:72px; border-radius:50%; flex:0 0 auto; background:linear-gradient(135deg,var(--accent),var(--accent2)); display:grid; place-items:center; color:#fff; font-size:30px; font-weight:800; box-shadow:0 12px 30px rgba(255,92,138,.4); }
+.fs-author-who{ min-width:0; }
+.fs-author-who .nm{ font-size:18px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fs-author-who .bio{ font-size:12.5px; color:var(--muted); margin-top:6px; line-height:1.5; }
+/* 旧类保留（若别处仍引用） */
 .fs-author-info{ text-align:center; margin-top:14px; padding:0 24px; }
 .fs-author-name{ font-size:22px; font-weight:800; }
 .fs-author-bio{ font-size:13px; color:var(--muted); margin-top:8px; line-height:1.5; }
@@ -1061,10 +1107,16 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .fs-author-acts .fs-pill.primary2{ background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff; border:none; }
 .fs-author-sec{ padding:18px 22px 6px; font-size:14px; font-weight:600; }
 .fs-author-tracks{ padding:4px 18px calc(20px + var(--sab)); }
-/* v2.5.5 #3：歌手详情页内嵌迷你条 —— 位置=原 Tab 位置（与 #2 同）。
-   公共组件 ArtistPage 自动带上；在 .fs-author(z9) 内重新定位到屏幕底部(贴手势区)，
-   z-index 高于 .fs-author 内容即可盖住作品区、不压歌曲（.fs-author 已留 56px 底部）。 */
-.fs-author .mini-player{ bottom:var(--sab); z-index:11; left:8px; right:8px; }
+/* v2.5.5 #3 / v2.6.1 A8：歌手详情页内嵌迷你条。
+   A8 关键修复：旧规则 z-index:11 是相对 .fs-author（z9）**内部**的层叠，
+   而搜索入口的容器 .stm-artist-page 整体是 z-index:96 的 fixed 全屏层 ——
+   .mini-player 基础规则是 position:fixed + z-index:91，被 96 盖住，所以看不见。
+   这里把迷你条提到 97（高于 .stm-artist-page 的 96，低于 3 点菜单 92…… 不，92 更低），
+   取值 97 可同时压过 .stm-artist-page(96) 且不影响更高层的弹窗。 */
+.fs-author .mini-player{ position:fixed; bottom:var(--sab); z-index:97; left:8px; right:8px; }
+/* v2.6.1 A8：行内播放按钮（UI.html .arow .p） */
+.fs-author-track .at-play{ width:34px; height:34px; flex:0 0 auto; display:grid; place-items:center; border:none; border-radius:50%; background:transparent; color:var(--muted); cursor:pointer; }
+.fs-author-track .at-play:hover{ background:var(--panel2); color:var(--accent); }
 /* v2.5.5 #6：歌手页作品区骨架屏（进入加载首响期间占位，不像卡住） */
 .fs-author-skeleton{ display:flex; flex-direction:column; gap:2px; padding:4px 18px; }
 .skel-row{ display:flex; align-items:center; gap:12px; padding:11px 4px; }
@@ -1073,6 +1125,9 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .skel-meta{ flex:1; display:flex; flex-direction:column; gap:6px; }
 .skel-name{ height:13px; border-radius:4px; width:60%; }
 .skel-sub{ height:11px; border-radius:4px; width:40%; }
+/* v2.6.1 A8：搜索结果页歌手浮层容器 —— 底部留出迷你条高度，避免压住它。
+   （配合上面 .fs-author .mini-player 的 z-index 提升，双保险。） */
+.stm-artist-page{ padding-bottom:0; }
 .skel-idx,.skel-cover,.skel-name,.skel-sub{
   background:linear-gradient(90deg, var(--panel3) 25%, var(--panel2) 50%, var(--panel3) 75%);
   background-size:200% 100%; animation:skel-shine 1.2s ease-in-out infinite;
@@ -1349,6 +1404,13 @@ button.primary { background: var(--accent); color: #fff; border: none; border-ra
 .dl-row .dl-st{ flex:none; font-size:12px; color:var(--muted); }
 .dl-row .dl-st.done{ color:#23c08b; }
 .dl-row .dl-st.error{ color:var(--accent); }
+/* v2.6.1 A8：任务行尾的移除按钮（对齐 UI.html 的 .mini 🗑） */
+.dl-row .dl-x{
+  flex:none; width:28px; height:28px; display:grid; place-items:center;
+  background:none; border:none; padding:0; cursor:pointer;
+  color:var(--muted); border-radius:8px; transition:.15s;
+}
+.dl-row .dl-x:hover{ color:var(--accent); background:var(--panel3); }
 
 /* #12：播放页整屏一色 —— 顶部状态栏已由原生桥 setBarsColor 染色（见 navBar.ts），
    这里补齐 Web 侧：播放页根层吃 --bg，底部 tab 去掉分隔线与阴影（割裂感的来源）。 */

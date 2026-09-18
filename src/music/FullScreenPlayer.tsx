@@ -172,27 +172,31 @@ export function FullScreenPlayer({
 
   // 播放器内部浮层纳入系统返回手势栈：返回先关最上层浮层，再交由 MusicApp 退出播放页。
   // v2.3.11 #4：由「往 window 上挂单槽 __playerBack」改为「向返回栈压一条 handler」。
-  // 单槽的毛病是只有最后挂载者能说话，播放器与 App 级浮层同时存在时会互相覆盖；
-  // 压栈后 MusicApp 的 dispatchBack 会先问到这一层，栈的自然顺序就是层级顺序。
+  //
+  // v2.6.1 A6-4：从「单 handler + 手写 if 链」改为「每个浮层各自一条 useEffect」。
+  //
+  // 旧写法的问题：把 6 个状态塞进一条 handler 的顺序判断里 —— 而 backStack 的设计初衷
+  // 恰恰是**消灭**这种扁平 if 链（见 backStack.ts 文件头：旧架构的病根就是
+  // 「扁平 if-else 单槽链，层级信息丢失」）。手写顺序 = 隐式层级，将来加一个新浮层
+  // 而忘了插到正确位置，就会出现「先关掉了不等层的东西」。
+  //
+  // 改成每层独立登记后，层级 = 挂载顺序（后挂载的在栈顶），与 MyMusicModal 的写法一致，
+  // 新增浮层只要再加一条 useEffect，不必回头调整别人的顺序。
+  // 注意：登记顺序即返回优先级（后挂载者先被问到），所以这里保持「越"上层"的越靠后」。
+  useEffect(() => (showMenu ? pushBackHandler(() => { setShowMenu(false); setAddTarget(null); return true; }) : undefined), [showMenu]);
+  // 菜单内的二级视图（如歌单选择、睡眠定时）先退回主菜单，再关菜单 —— 挂在主菜单之上
   useEffect(
-    () =>
-      pushBackHandler(() => {
-        if (showLandscape) { setShowLandscape(false); return true; }
-        if (showAuthor) { setShowAuthor(false); return true; }
-        if (showEq) { setShowEq(false); return true; }
-        if (showMenu) {
-          // 菜单内的二级视图（如歌单选择、睡眠定时）先退回主菜单，再关菜单
-          if (menuView !== 'main') { setMenuView('main'); setAddTarget(null); return true; }
-          setShowMenu(false);
-          setAddTarget(null);
-          return true;
-        }
-        if (showPlaylist) { setShowPlaylist(false); return true; }
-        if (coverLyric) { setCoverLyric(false); return true; }
-        return false; // 播放器自己没有浮层，放行给外层
-      }),
-    [showPlaylist, showAuthor, showLandscape, showMenu, menuView, showEq, coverLyric],
+    () => (showMenu && menuView !== 'main'
+      ? pushBackHandler(() => { setMenuView('main'); setAddTarget(null); return true; })
+      : undefined),
+    [showMenu, menuView],
   );
+  useEffect(() => (showPlaylist ? pushBackHandler(() => { setShowPlaylist(false); return true; }) : undefined), [showPlaylist]);
+  useEffect(() => (coverLyric ? pushBackHandler(() => { setCoverLyric(false); return true; }) : undefined), [coverLyric]);
+  useEffect(() => (showEq ? pushBackHandler(() => { setShowEq(false); return true; }) : undefined), [showEq]);
+  useEffect(() => (showAuthor ? pushBackHandler(() => { setShowAuthor(false); return true; }) : undefined), [showAuthor]);
+  useEffect(() => (showLandscape ? pushBackHandler(() => { setShowLandscape(false); return true; }) : undefined), [showLandscape]);
+
   // v2.4.6 #6：横屏时给 <body> 挂 .landscape-on 标记。
   // 底部 Tab（.bottom-nav）挂在 App 根层、与播放页同级，CSS 无法从 .fs-land 反向选中它，
   // 所以用 body 标记做开关：横屏隐藏 Tab + 收紧内容 padding，进度条才能贴到底边。
