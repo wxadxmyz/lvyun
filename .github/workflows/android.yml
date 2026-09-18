@@ -170,6 +170,12 @@ jobs:
           grep -c "setBarsColor" "$MAIN" || echo "setBarsColor missing!"
           grep -c "_lvApplyStatusBar" "$MAIN" || echo "_lvApplyStatusBar missing!"
 
+      - name: Patch theme splash gradient (v2.5.6 styles.xml 兜底)
+        # v2.5.6 #1：tauri android init 生成 res 后，注入主题 windowBackground 渐变兜底，
+        # 与 _lvSplashBg 同色值(#FF7AB6→#C05CFF→#3A1E5C)，消除冷启动第一帧品牌色缺失。
+        run: |
+          python3 scripts/patch-android-styles.py
+
       - name: Patch Android foreground media service
         # v2.4.8 #9：注入前台媒体服务，解决「切后台过一会儿自动停 / 切回像重进」。
         # 该步骤会：① 写 LvYunMediaService.kt；② 改 AndroidManifest（权限 + service）；
